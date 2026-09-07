@@ -14,7 +14,17 @@ import simd
             let side = simd_normalize(simd_cross(axis, abs(axis.z) < 0.9 ? SIMD3(0,0,1) : SIMD3(0,1,0))) * (width / 2)
             let up = simd_normalize(simd_cross(axis, side)) * (width / 2)
             let offset = UInt32(positions.count)
-            positions += [a-side-up, a+side-up, a-side+up, a+side+up, b-side-up, b+side-up, b-side+up, b+side+up]
+            // Keep each SIMD expression small enough for the Swift 6.1 type checker.
+            let aLeft = a - side, aRight = a + side
+            let bLeft = b - side, bRight = b + side
+            positions.append(aLeft - up)
+            positions.append(aRight - up)
+            positions.append(aLeft + up)
+            positions.append(aRight + up)
+            positions.append(bLeft - up)
+            positions.append(bRight - up)
+            positions.append(bLeft + up)
+            positions.append(bRight + up)
             indices += faces.map { $0 + offset }
         }
         var descriptor = MeshDescriptor(name: "Batched lines")
