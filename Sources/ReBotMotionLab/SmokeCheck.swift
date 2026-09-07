@@ -120,6 +120,18 @@ import simd
                 try captureWindow(to: folder.appendingPathComponent("modes.png"))
                 results.append("Captured native simulator and actuator reference views")
                 model.page = .mcp
+                let control = model.mcpControl
+                for codex in [true, false] {
+                    let preview = control.configuration(codex: codex, redactingLocation: true)
+                    guard preview.contains("…/"), preview.contains("ReBotMCP"),
+                          !preview.contains(Bundle.main.bundleURL.deletingLastPathComponent().path),
+                          !preview.contains(FileManager.default.homeDirectoryForCurrentUser.path),
+                          control.configuration(codex: codex).contains(control.executable)
+                    else { throw CheckError.failed("MCP preview must hide the install directory while copied configuration retains the executable") }
+                }
+                let configuration = try JSONSerialization.jsonObject(with: Data(control.configuration(codex: false).utf8)) as! [String: [String: [String: Any]]]
+                guard configuration["mcpServers"]?["rebot"]?["command"] as? String == control.executable else { throw CheckError.failed("MCP copied JSON changed the executable path") }
+                results.append("MCP previews hide private install paths in both formats; copied configuration retains the correct executable")
                 model.mcpControl.setEnabled(true, persist: false)
                 guard model.mcpControl.enabled else { throw CheckError.failed("MCP listener did not start: \(model.mcpControl.status)") }
                 try await Task.sleep(for: .milliseconds(500))

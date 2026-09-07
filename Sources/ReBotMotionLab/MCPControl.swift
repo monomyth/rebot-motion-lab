@@ -42,17 +42,22 @@ import RobotControl
         if Bundle.main.bundleURL.pathExtension == "app" { return Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ReBotMCP").path }
         return URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.deletingLastPathComponent().appendingPathComponent("ReBotMCP").path
     }
-    var configuration: String {
-        let json: [String: Any] = ["mcpServers": ["rebot": ["command": executable, "args": [String]()]]]
+    func configuration(codex: Bool, redactingLocation: Bool = false) -> String {
+        // Keep screen sharing free of user names and private install directories.
+        // The Copy action still supplies the real executable path to the client.
+        let command = redactingLocation
+            ? (Bundle.main.bundleURL.pathExtension == "app" ? "…/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP" : "…/ReBotMCP")
+            : executable
+        if codex {
+            let path = String(decoding: (try? JSONSerialization.data(withJSONObject: command, options: [.fragmentsAllowed, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
+            return "[mcp_servers.rebot-motion-lab]\ncommand = \(path)\nargs = []"
+        }
+        let json: [String: Any] = ["mcpServers": ["rebot": ["command": command, "args": [String]()]]]
         return String(decoding: (try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
-    }
-    var codexConfiguration: String {
-        let path = String(decoding: (try? JSONSerialization.data(withJSONObject: executable, options: [.fragmentsAllowed, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
-        return "[mcp_servers.rebot-motion-lab]\ncommand = \(path)\nargs = []"
     }
     func copyConfiguration(codex: Bool) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(codex ? codexConfiguration : configuration, forType: .string)
+        NSPasteboard.general.setString(configuration(codex: codex), forType: .string)
     }
     private func record(_ text: String) {
         recentCommands.insert("\(Date().formatted(date: .omitted, time: .standard)) · \(text)", at: 0)
@@ -196,7 +201,8 @@ struct MCPControlView: View {
                     Spacer()
                 }
                 Text("Add this stdio server to your MCP client, then reload its tools. Keep the app in its current location, or copy a fresh configuration after moving it.").labFont(.body)
-                Text(codex ? control.codexConfiguration : control.configuration).labFont(.system(size: 12, design: .monospaced)).textSelection(.enabled).padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 10))
+                Text(control.configuration(codex: codex, redactingLocation: true)).labFont(.system(size: 12, design: .monospaced)).padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 10))
+                Label("The preview hides your install location. Copy MCP configuration includes the full local path so your client can launch the app.", systemImage: "eye.slash").labFont(.caption).foregroundStyle(.secondary)
                 Text("Try: “Unfold the robot to Ready, move joint 1 to 30 degrees, then close the gripper.”").labFont(.body)
                 Text("Moves return as soon as they start. The client can read live state until motion finishes. Stop a running move before commanding another pose.").labFont(.caption).foregroundStyle(.secondary)
                 Divider()

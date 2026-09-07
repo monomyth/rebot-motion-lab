@@ -4,6 +4,10 @@ Version 1.5 includes **ReBotMCP**, a native universal macOS executable that expo
 
 Open the app's **MCP control** page to enable/disable access, copy a configuration with the current executable path, and inspect recent commands. MCP control is enabled by default; turning it off stops motion and saves that preference. Only one app instance provides MCP control at a time.
 
+The on-screen preview hides your install directory for screen sharing. Use **Copy MCP configuration** to copy the working configuration; the clipboard includes the full local path required to launch the helper.
+
+![MCP control with the private install directory hidden in the configuration preview](docs/images/mcp-control.png)
+
 ## Connect Codex
 
 Register the bundled executable using the full path to your copy of the app:

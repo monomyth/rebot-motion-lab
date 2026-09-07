@@ -8,6 +8,7 @@ Joint, gripper, IK, playback, pause/resume and completion checks passed
 Trajectory export/import round trip passed
 Native Command-plus/equal, Command-minus, Command-zero and View menu actions passed
 Captured native simulator and actuator reference views
+MCP previews hide private install paths in both formats; copied configuration retains the correct executable
 MCP control page, manual motion state/rejection/stop, and enable/disable listener checks passed
 Smooth preset transition and cached scene navigation passed
 Smooth folding and closed-gripper endpoint passed

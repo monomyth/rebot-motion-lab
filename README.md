@@ -9,7 +9,7 @@
 
 Move six joints and a coupled gripper, plan repeatable trajectories, inspect actuator settings, and control the simulator through MCP. The native app uses **SwiftUI, AppKit, and RealityKit**, with robot geometry and reference material bundled for offline use. The browser app uses **React and Three.js**.
 
-[**Run the native app**](#build-from-source) · [Run the web app](#web-simulator) · [MCP setup](MCP.md) · [Actuator reference](Sources/RobotCore/Resources/B601-DM-actuator-settings.md)
+[**Download for macOS**](https://github.com/monomyth/rebot-motion-lab/releases/latest) · [Build from source](#build-from-source) · [Run the web app](#web-simulator) · [MCP setup](MCP.md) · [Actuator reference](Sources/RobotCore/Resources/B601-DM-actuator-settings.md)
 
 ![ReBot Motion Lab showing the folded B601-DM, joint controls, tool coordinates, and a waypoint sequence](docs/images/simulator.png)
 
@@ -37,7 +37,7 @@ This is a **kinematic simulator**. It enforces contact with the base plane, incl
 
 ## Get started
 
-1. [Build the native app](#build-from-source), then open **dist/ReBot Motion Lab.app**. A packaged app is also produced by the [macOS CI workflow](https://github.com/monomyth/rebot-motion-lab/actions).
+1. [Download the latest macOS release](https://github.com/monomyth/rebot-motion-lab/releases/latest), unzip it, and move **ReBot Motion Lab.app** to **Applications**. You can also [build from source](#build-from-source).
 2. Open the app and select **Ready** to unfold the arm.
 3. Adjust a joint or the gripper, then choose **Add pose** to save the displayed control values.
 4. Add more poses and press **Play**. Export the sequence to keep it between sessions.
@@ -71,7 +71,11 @@ The reference preserves differences between source versions. For example, Seeed'
 
 ## Connect an MCP client
 
-Open **MCP control** in the sidebar to enable access and copy a configuration for the app's current location. With the app in Applications, a standard stdio configuration is:
+Open **MCP control** in the sidebar to enable access and copy a configuration for the app's current location.
+
+The on-screen preview hides your private install directory. The Copy button includes the actual path so the client can launch the helper.
+
+With the app in Applications, a standard stdio configuration is:
 
 ```json
 {

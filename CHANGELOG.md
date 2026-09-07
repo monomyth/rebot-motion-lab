@@ -2,6 +2,7 @@
 
 ## 1.5.0 — 2026-09-07
 
+- Hide private install directories in both MCP configuration previews while copying a working configuration with the full executable path.
 - Unified the web simulator, native Swift app, and native MCP server in one repository, preserving both source histories.
 - Added solid base-plane stops for all moving geometry, including both gripper fingertips, with immediate slider clamping and swept-path checks.
 - Added matching Swift/web collision tests and web CI.
