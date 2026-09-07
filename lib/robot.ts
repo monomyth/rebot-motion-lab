@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import model from '../public/model/model.json';
+import model from './model.json';
 export const DEG = Math.PI / 180;
 export const ARM_JOINTS = model.joints.filter(j => j.type === 'revolute');
 export const HOME = [0, -95, -95, 10, 0, 0];
