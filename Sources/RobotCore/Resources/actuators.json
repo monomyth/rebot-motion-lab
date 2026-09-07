@@ -1,0 +1,1202 @@
+{
+  "checked": "2026-09-06",
+  "sources": [
+    {
+      "id": "sdk-config",
+      "title": "Seeed B601-DM configuration",
+      "url": "https://github.com/Seeed-Projects/reBotArm_control_py/blob/1bcd81b22c182ec257bf04f5746e1e3d556a5f1c/config/rebotarm_dm.yaml",
+      "detail": "Published motor assignments and software gains; not device readback."
+    },
+    {
+      "id": "sdk-code",
+      "title": "Seeed actuator implementation",
+      "url": "https://github.com/Seeed-Projects/reBotArm_control_py/blob/1bcd81b22c182ec257bf04f5746e1e3d556a5f1c/reBotArm_control_py/actuator/rebotarm.py",
+      "detail": "Parameter loading, serial rate, groups, mode selection and gain-register writes."
+    },
+    {
+      "id": "registers",
+      "title": "MotorBridge complete Damiao register table",
+      "url": "https://github.com/motorbridge/motorbridge/blob/c48ebc4b2f250aa1f411a580d9d7b626e187040f/motor_vendors/damiao/src/registers.rs",
+      "detail": "53 registers, their identifiers, access types and declared ranges."
+    },
+    {
+      "id": "protocol",
+      "title": "MotorBridge Damiao command encoder",
+      "url": "https://github.com/motorbridge/motorbridge/blob/c48ebc4b2f250aa1f411a580d9d7b626e187040f/motor_vendors/damiao/src/protocol.rs",
+      "detail": "MIT limits, command encoding and status codes."
+    },
+    {
+      "id": "models",
+      "title": "MotorBridge motor model catalog",
+      "url": "https://github.com/motorbridge/motorbridge/blob/c48ebc4b2f250aa1f411a580d9d7b626e187040f/motor_vendors/damiao/src/motor.rs",
+      "detail": "4310 / 4340P encoding limits; these are not continuous torque ratings."
+    },
+    {
+      "id": "manual",
+      "title": "Damiao control protocol manual V1.4",
+      "url": "https://github.com/dmBots/damiao-document/blob/5e5a6932b8f013636415174c7433b9685ba24aa2/\u8c03\u8bd5\u52a9\u624b\u4f7f\u7528\u8bf4\u660e\u4e66\uff08\u8fbe\u5999\u9a71\u52a8\u63a7\u5236\u534f\u8bae\uff09V1.4.pdf",
+      "detail": "Pages 10\u201311, 32\u201340: units, modes, commands and parameter meanings. Older manual; firmware differences are called out."
+    },
+    {
+      "id": "gravity",
+      "title": "Seeed gravity-compensation controller",
+      "url": "https://github.com/Seeed-Projects/reBotArm_control_py/blob/1bcd81b22c182ec257bf04f5746e1e3d556a5f1c/reBotArm_control_py/controllers/gravity_compensation.py",
+      "detail": "Compliant gains, torque scaling, direction and transition settings."
+    },
+    {
+      "id": "model",
+      "title": "Seeed B601-DM URDF used by this simulator",
+      "url": "https://github.com/Seeed-Projects/reBot-DevArm/blob/c9b893aa26c7d89019dd3d0a28ff8f6a7d47ccf9/Rebot_Arm_description/DM/urdf/ReBot_Arm_DM.urdf",
+      "detail": "Kinematic joint limits and model effort / velocity fields."
+    },
+    {
+      "id": "setup",
+      "title": "Seeed B601-DM SDK setup guide",
+      "url": "https://github.com/Seeed-Projects/reBotArm_control_py/blob/1bcd81b22c182ec257bf04f5746e1e3d556a5f1c/README.md",
+      "detail": "Serial and SocketCAN setup examples; bus settings depend on the installed hardware."
+    }
+  ],
+  "notes": [
+    {
+      "title": "Published values, not a hardware readout",
+      "text": "No actuator has been queried. The per-joint values are defaults from a pinned Seeed configuration; actual firmware, saved registers and calibration may differ."
+    },
+    {
+      "title": "MIT damping mismatch",
+      "text": "Joints 1\u20133 specify kd = 8 in Seeed\u2019s YAML. Both the inspected MotorBridge encoder and Damiao V1.4 define kd = 0\u20135; that encoder clips 8 to 5. The installed MotorBridge version must be checked before assuming an effective gain.",
+      "sources": ["sdk-config", "protocol", "manual"]
+    },
+    {
+      "title": "Mapping limits are not mechanical limits",
+      "text": "PMAX / VMAX / TMAX describe packet scaling. Joint travel, requested speeds, thermal ratings and modeled effort limits are separate quantities. The host and motor mapping scales must agree.",
+      "sources": ["models", "model", "manual"]
+    },
+    {
+      "title": "Firmware-specific fields remain explicit",
+      "text": "The 53-register list is complete for the inspected MotorBridge table. It does not establish every register supported by every 4310 or 4340P firmware. Extended readbacks, raw scaling, reserved fields and undocumented coefficient behavior are marked accordingly.",
+      "sources": ["registers"]
+    },
+    {
+      "title": "Different configuration layers",
+      "text": "Software YAML edits affect the host when loaded. Firmware RAM writes can be lost at power-off; storing parameters persists them. MIT command gains are sent in packets. This reference is read-only and does not apply any values to the simulator or hardware.",
+      "sources": ["sdk-code", "manual"]
+    }
+  ],
+  "actuators": [
+    {
+      "joint": "joint1",
+      "model": "4340P",
+      "motor_id": "0x01",
+      "feedback_id": "0x11",
+      "kp": 120.0,
+      "kd": 8.0,
+      "vel_kp": 0.0125,
+      "vel_ki": 0.004,
+      "pos_kp": 150.0,
+      "pos_ki": 0.5,
+      "vlim": 5.0,
+      "pmax": 12.5,
+      "vmax": 10,
+      "tmax": 28,
+      "lower": -2.8,
+      "upper": 2.8,
+      "urdf_effort": 27.0,
+      "urdf_velocity": 50.0
+    },
+    {
+      "joint": "joint2",
+      "model": "4340P",
+      "motor_id": "0x02",
+      "feedback_id": "0x12",
+      "kp": 120.0,
+      "kd": 8.0,
+      "vel_kp": 0.0125,
+      "vel_ki": 0.004,
+      "pos_kp": 150.0,
+      "pos_ki": 0.5,
+      "vlim": 5.0,
+      "pmax": 12.5,
+      "vmax": 10,
+      "tmax": 28,
+      "lower": -3.14,
+      "upper": 0.0,
+      "urdf_effort": 27.0,
+      "urdf_velocity": 50.0
+    },
+    {
+      "joint": "joint3",
+      "model": "4340P",
+      "motor_id": "0x03",
+      "feedback_id": "0x13",
+      "kp": 120.0,
+      "kd": 8.0,
+      "vel_kp": 0.0125,
+      "vel_ki": 0.004,
+      "pos_kp": 150.0,
+      "pos_ki": 0.5,
+      "vlim": 5.0,
+      "pmax": 12.5,
+      "vmax": 10,
+      "tmax": 28,
+      "lower": -3.14,
+      "upper": 0.0,
+      "urdf_effort": 27.0,
+      "urdf_velocity": 50.0
+    },
+    {
+      "joint": "joint4",
+      "model": "4310",
+      "motor_id": "0x04",
+      "feedback_id": "0x14",
+      "kp": 18.0,
+      "kd": 2.0,
+      "vel_kp": 0.0008,
+      "vel_ki": 0.002,
+      "pos_kp": 70.0,
+      "pos_ki": 1.0,
+      "vlim": 3.0,
+      "pmax": 12.5,
+      "vmax": 30,
+      "tmax": 10,
+      "lower": -1.87,
+      "upper": 1.57,
+      "urdf_effort": 7.0,
+      "urdf_velocity": 200.0
+    },
+    {
+      "joint": "joint5",
+      "model": "4310",
+      "motor_id": "0x05",
+      "feedback_id": "0x15",
+      "kp": 18.0,
+      "kd": 2.0,
+      "vel_kp": 0.0008,
+      "vel_ki": 0.002,
+      "pos_kp": 60.0,
+      "pos_ki": 1.0,
+      "vlim": 3.0,
+      "pmax": 12.5,
+      "vmax": 30,
+      "tmax": 10,
+      "lower": -1.57,
+      "upper": 1.57,
+      "urdf_effort": 7.0,
+      "urdf_velocity": 200.0
+    },
+    {
+      "joint": "joint6",
+      "model": "4310",
+      "motor_id": "0x06",
+      "feedback_id": "0x16",
+      "kp": 18.0,
+      "kd": 2.0,
+      "vel_kp": 0.0008,
+      "vel_ki": 0.002,
+      "pos_kp": 60.0,
+      "pos_ki": 1.0,
+      "vlim": 3.0,
+      "pmax": 12.5,
+      "vmax": 30,
+      "tmax": 10,
+      "lower": -3.14,
+      "upper": 3.14,
+      "urdf_effort": 7.0,
+      "urdf_velocity": 200.0
+    },
+    {
+      "joint": "gripper",
+      "model": "4310",
+      "motor_id": "0x07",
+      "feedback_id": "0x17",
+      "kp": 8.0,
+      "kd": 1.0,
+      "vel_kp": 0.0008,
+      "vel_ki": 0.002,
+      "pos_kp": 50.0,
+      "pos_ki": 1.0,
+      "vlim": 3.0,
+      "pmax": 12.5,
+      "vmax": 30,
+      "tmax": 10,
+      "lower": null,
+      "upper": null,
+      "urdf_effort": null,
+      "urdf_velocity": null
+    }
+  ],
+  "software": [
+    {
+      "key": "channel",
+      "value": "/dev/ttyACM0",
+      "unit": "device path",
+      "description": "Host interface used to reach the actuators. The SDK selects the Damiao serial bridge for paths beginning /dev/tty.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "serial baud",
+      "value": "921600",
+      "unit": "bit/s",
+      "description": "Serial bridge rate fixed in the inspected SDK controller factory. This does not set the CAN wire bit rate.",
+      "source": "sdk-code"
+    },
+    {
+      "key": "CAN bit rate",
+      "value": "Installation-specific",
+      "unit": "bit/s",
+      "description": "Seeed\u2019s SDK README gives a 500,000 bit/s SocketCAN example; the older Damiao V1.4 manual specifies 1,000,000 bit/s. Match the actual bridge and firmware; neither is a universal B601 setting.",
+      "source": "setup"
+    },
+    {
+      "key": "rate",
+      "value": "500",
+      "unit": "Hz",
+      "description": "Requested host control-loop frequency. It does not change the motor firmware\u2019s internal servo frequency.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "arm_control_mode",
+      "value": "posvel",
+      "unit": "mode name",
+      "description": "Default for RebotArmEndPose when no explicit mode is passed. It does not force every JointGroup into this mode; low-level groups initially track MIT.",
+      "source": "sdk-code"
+    },
+    {
+      "key": "groups.arm.joints",
+      "value": "joint1 \u2026 joint6",
+      "unit": "ordered names",
+      "description": "Arm membership and command-array ordering; the six arm joints are controlled as one group.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "groups.gripper.joints",
+      "value": "gripper",
+      "unit": "ordered names",
+      "description": "Independent gripper group. Motor 7 drives the mechanism; the two simulated finger joints are a kinematic representation.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "joints[].name",
+      "value": "joint1 \u2026 joint6, gripper",
+      "unit": "name",
+      "description": "Logical key used to pair a software joint with its motor and group.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "joints[].vendor",
+      "value": "damiao",
+      "unit": "driver name",
+      "description": "Chooses the actuator protocol implementation.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "joints[].model",
+      "value": "4340P / 4310",
+      "unit": "catalog name",
+      "description": "Selects the SDK\u2019s initial position, velocity and torque mapping scales. A wrong model can mis-scale commands and feedback.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "joints[].motor_id",
+      "value": "0x01 \u2026 0x07",
+      "unit": "CAN ID",
+      "description": "Software expectation for the receive ID; it does not itself prove or change the device\u2019s ESC_ID.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "joints[].feedback_id",
+      "value": "0x11 \u2026 0x17",
+      "unit": "CAN ID",
+      "description": "Software expectation for the feedback arbitration ID, paired with MST_ID.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "MIT.kp",
+      "value": "Per-joint table",
+      "unit": "N\u00b7m/rad",
+      "description": "Position-error stiffness sent in MIT command packets. More stiffness produces more restoring torque for the same error.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "MIT.kd",
+      "value": "Per-joint table",
+      "unit": "N\u00b7m\u00b7s/rad",
+      "description": "Velocity-error damping sent in MIT packets. The inspected encoder clamps to 0\u20135; the first three YAML values are 8.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "POS_VEL.vel_kp",
+      "value": "Per-joint table",
+      "unit": "firmware gain",
+      "description": "Written to RID 25 (KP_ASR) when the SDK configures position/velocity mode.",
+      "source": "sdk-code"
+    },
+    {
+      "key": "POS_VEL.vel_ki",
+      "value": "Per-joint table",
+      "unit": "firmware gain",
+      "description": "Written to RID 26 (KI_ASR) when configuring position/velocity mode.",
+      "source": "sdk-code"
+    },
+    {
+      "key": "POS_VEL.pos_kp",
+      "value": "Per-joint table",
+      "unit": "firmware gain",
+      "description": "Written to RID 27 (KP_APR); separate from the MIT proportional gain.",
+      "source": "sdk-code"
+    },
+    {
+      "key": "POS_VEL.pos_ki",
+      "value": "Per-joint table",
+      "unit": "firmware gain",
+      "description": "Written to RID 28 (KI_APR); actual loop semantics depend on firmware.",
+      "source": "sdk-code"
+    },
+    {
+      "key": "POS_VEL.vlim",
+      "value": "5 arm J1\u20133; 3 J4\u20137",
+      "unit": "rad/s",
+      "description": "Velocity limit carried with each position/velocity target. This is an output command limit, separate from VMAX and rotor-side MAX_SPD.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "urdf_path",
+      "value": "urdf/DM/urdf/ReBot_Arm_DM.urdf",
+      "unit": "file path",
+      "description": "Robot geometry, joint transforms, inertial properties and modeled limits used by host kinematics.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "end_effector_frame",
+      "value": "end_link",
+      "unit": "frame name",
+      "description": "Frame whose position and orientation the host controller targets.",
+      "source": "sdk-config"
+    },
+    {
+      "key": "gravity_compensation.kp",
+      "value": "1.5 in YAML; 2.0 API default",
+      "unit": "N\u00b7m/rad",
+      "description": "Compliant MIT stiffness while hand-guiding with gravity compensation. Whether YAML or constructor defaults apply depends on the caller.",
+      "source": "gravity"
+    },
+    {
+      "key": "gravity_compensation.kd",
+      "value": "1.0",
+      "unit": "N\u00b7m\u00b7s/rad",
+      "description": "Compliant damping used with gravity compensation.",
+      "source": "gravity"
+    },
+    {
+      "key": "gravity_compensation.tau_scale",
+      "value": "[1, 1, 1, 1, 1, 1]",
+      "unit": "per-joint factor",
+      "description": "Scales predicted gravity torque per arm joint to compensate for model-versus-hardware differences.",
+      "source": "gravity"
+    },
+    {
+      "key": "gravity_compensation.transition_duration",
+      "value": "0.5",
+      "unit": "s",
+      "description": "Time used to blend from stiff hold gains to compliant gains at startup.",
+      "source": "gravity"
+    },
+    {
+      "key": "GravityCompensation.joint_direction",
+      "value": "+1 by default",
+      "unit": "\u00b11 per joint",
+      "description": "Transforms joint signs for the model and maps gravity torques back to hardware. Not the same as firmware RID 55.",
+      "source": "gravity"
+    },
+    {
+      "key": "GravityCompensation.hold_kp / hold_kd",
+      "value": "Arm MIT gains unless overridden",
+      "unit": "per-joint gains",
+      "description": "Stiff hold gains used before the compliant transition and when returning to a hold.",
+      "source": "gravity"
+    },
+    {
+      "key": "GravityCompensation.enabled_joints",
+      "value": "All when omitted",
+      "unit": "joint names",
+      "description": "Restricts which named motors are enabled for that controller.",
+      "source": "gravity"
+    },
+    {
+      "key": "GravityCompensation.log_every",
+      "value": "0",
+      "unit": "loop count",
+      "description": "Diagnostic print interval; zero suppresses periodic output.",
+      "source": "gravity"
+    },
+    {
+      "key": "gravity_compensation.profiles",
+      "value": "Optional; none in DM YAML",
+      "unit": "named mappings",
+      "description": "Loader can merge a named profile over the shared gravity settings; the inspected DM file defines no profiles.",
+      "source": "sdk-code"
+    }
+  ],
+  "commands": [
+    {
+      "key": "MIT p_des / pos",
+      "range": "\u2212PMAX \u2026 +PMAX",
+      "unit": "rad",
+      "description": "Target output position. The SDK send_mit call requires a position array; encoding uses 16 bits."
+    },
+    {
+      "key": "MIT v_des / vel",
+      "range": "\u2212VMAX \u2026 +VMAX",
+      "unit": "rad/s",
+      "description": "Desired velocity used by the damping term. Seeed defaults omitted velocity arrays to zero; encoding uses 12 bits."
+    },
+    {
+      "key": "MIT Kp / kp",
+      "range": "0 \u2026 500",
+      "unit": "N\u00b7m/rad",
+      "description": "Position-error gain in each command. A larger value raises restoring stiffness; this is separate from firmware KP_APR."
+    },
+    {
+      "key": "MIT Kd / kd",
+      "range": "0 \u2026 5",
+      "unit": "N\u00b7m\u00b7s/rad",
+      "description": "Velocity-error gain in each command. MotorBridge clamps outside values, including YAML kd = 8, to the encoding range."
+    },
+    {
+      "key": "MIT t_ff / tau",
+      "range": "\u2212TMAX \u2026 +TMAX",
+      "unit": "N\u00b7m",
+      "description": "Feedforward torque added to the position and velocity terms. Omitted arrays default to zero in the Seeed SDK."
+    },
+    {
+      "key": "POS_VEL target_position",
+      "range": "float32; application limits required",
+      "unit": "rad",
+      "description": "Destination for the firmware position loop. This float format does not enforce the robot URDF travel limits by itself."
+    },
+    {
+      "key": "POS_VEL velocity_limit / vlim",
+      "range": "float32; hardware-dependent",
+      "unit": "rad/s",
+      "description": "Travel-speed limit sent alongside each target position. ACC and DEC determine the non-MIT ramp."
+    },
+    {
+      "key": "VEL target_velocity",
+      "range": "float32; hardware-dependent",
+      "unit": "rad/s",
+      "description": "Signed velocity request for the pure velocity mode. Direction follows the sign."
+    },
+    {
+      "key": "FORCE_POS target_position",
+      "range": "float32; firmware-dependent",
+      "unit": "rad",
+      "description": "Position target used together with speed and torque/current limiting in supported mode-4 firmware."
+    },
+    {
+      "key": "FORCE_POS velocity_limit",
+      "range": "0 \u2026 100 in the inspected encoder",
+      "unit": "rad/s",
+      "description": "Encoder clips the request to 0\u2013100 and packs it at 0.01 resolution. This is a wire-format range, not the motor\u2019s safe speed."
+    },
+    {
+      "key": "FORCE_POS torque_limit_ratio",
+      "range": "0 \u2026 1",
+      "unit": "fraction",
+      "description": "Normalized torque/current ceiling in supported mode 4. MotorBridge packs ratio \u00d7 10,000; this is not a torque value in N\u00b7m."
+    }
+  ],
+  "modes": [
+    {
+      "code": 1,
+      "name": "MIT",
+      "offset": "ESC_ID",
+      "description": "Combines position, velocity, stiffness, damping and feedforward torque in one packed command."
+    },
+    {
+      "code": 2,
+      "name": "Position / velocity",
+      "offset": "ESC_ID + 0x100",
+      "description": "Firmware moves toward a position with a commanded speed limit and its own motion ramp."
+    },
+    {
+      "code": 3,
+      "name": "Velocity",
+      "offset": "ESC_ID + 0x200",
+      "description": "Firmware tracks a signed velocity request."
+    },
+    {
+      "code": 4,
+      "name": "Force / position",
+      "offset": "ESC_ID + 0x300",
+      "description": "Position command with speed and torque/current limits. Listed by MotorBridge; the older V1.4 manual covers only modes 1\u20133."
+    }
+  ],
+  "operations": [
+    {
+      "name": "Enable",
+      "description": "Allows the drive to produce torque and accept motion commands.",
+      "persistence": "Volatile state",
+      "source": "manual"
+    },
+    {
+      "name": "Disable",
+      "description": "Turns off active drive torque; this is not a mechanical brake.",
+      "persistence": "Volatile state",
+      "source": "manual"
+    },
+    {
+      "name": "Save position zero",
+      "description": "Makes the present mechanical pose the encoder zero reference. This changes the relationship between commands and arm geometry.",
+      "persistence": "Calibration operation",
+      "source": "manual"
+    },
+    {
+      "name": "Clear error",
+      "description": "Clears a latched error; the underlying fault can remain and trigger again.",
+      "persistence": "Volatile state",
+      "source": "manual"
+    },
+    {
+      "name": "Read register",
+      "description": "Retrieves a firmware value without changing it. Use readback to establish actual device configuration.",
+      "persistence": "Read-only operation",
+      "source": "registers"
+    },
+    {
+      "name": "Write register",
+      "description": "Changes a writable value. The driver distinguishes a RAM write from saving parameters.",
+      "persistence": "Normally temporary until saved",
+      "source": "protocol"
+    },
+    {
+      "name": "Store parameters",
+      "description": "Commits changed configuration to nonvolatile storage so it survives power cycling. The manufacturer GUI\u2019s \u201cwrite parameters\u201d action can reset the controller.",
+      "persistence": "Persistent operation",
+      "source": "manual"
+    },
+    {
+      "name": "Request feedback",
+      "description": "Requests or refreshes position, velocity, torque, temperature and status feedback.",
+      "persistence": "Read-only operation",
+      "source": "protocol"
+    },
+    {
+      "name": "Sensor calibration / parameter identification",
+      "description": "Manufacturer commissioning routines identify encoder alignment and motor properties. These are not ordinary gain controls.",
+      "persistence": "Commissioning operation",
+      "source": "manual"
+    },
+    {
+      "name": "Firmware version / firmware update",
+      "description": "Version readback identifies the drive implementation; firmware replacement can change register support and behavior.",
+      "persistence": "Readback / firmware operation",
+      "source": "manual"
+    }
+  ],
+  "statuses": [
+    ["0x0", "Disabled"],
+    ["0x1", "Enabled"],
+    ["0x8", "Overvoltage"],
+    ["0x9", "Undervoltage"],
+    ["0xA", "Overcurrent"],
+    ["0xB", "MOS overtemperature"],
+    ["0xC", "Winding overtemperature"],
+    ["0xD", "Lost communication"],
+    ["0xE", "Overload"]
+  ],
+  "registers": [
+    {
+      "rid": 0,
+      "name": "UV_Value",
+      "access": "RW",
+      "range": "(10.0, 3.4E38]",
+      "type": "float32",
+      "category": "Protection",
+      "unit": "V",
+      "description": "Supply threshold below which the driver protects itself from undervoltage.",
+      "extended": false
+    },
+    {
+      "rid": 1,
+      "name": "KT_Value",
+      "access": "RW",
+      "range": "[0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Scaling",
+      "unit": "N\u00b7m/A",
+      "description": "Torque-to-current coefficient, called KT_OUT in the manual. Zero selects the firmware\u2019s calculated coefficient in V1.4.",
+      "extended": false
+    },
+    {
+      "rid": 2,
+      "name": "OT_Value",
+      "access": "RW",
+      "range": "[80.0, 200)",
+      "type": "float32",
+      "category": "Protection",
+      "unit": "\u00b0C",
+      "description": "Motor winding temperature trip threshold. Raising it permits a hotter motor before shutdown.",
+      "extended": false
+    },
+    {
+      "rid": 3,
+      "name": "OC_Value",
+      "access": "RW",
+      "range": "(0.0, 1.0)",
+      "type": "float32",
+      "category": "Protection",
+      "unit": "fraction",
+      "description": "Fraction of the peak phase-current limit. 0.5 means 50%; this is not a value in amperes.",
+      "extended": false
+    },
+    {
+      "rid": 4,
+      "name": "ACC",
+      "access": "RW",
+      "range": "(0.0, 3.4E38)",
+      "type": "float32",
+      "category": "Motion profile",
+      "unit": "krad/s\u00b2 in V1.4",
+      "description": "Acceleration ramp used outside MIT mode. Confirm the scaling in the installed firmware before interpreting a raw value.",
+      "extended": false
+    },
+    {
+      "rid": 5,
+      "name": "DEC",
+      "access": "RW",
+      "range": "[-3.4E38, 0.0)",
+      "type": "float32",
+      "category": "Motion profile",
+      "unit": "krad/s\u00b2 in V1.4",
+      "description": "Deceleration ramp outside MIT mode. The register table uses a negative value; compare magnitudes with ACC.",
+      "extended": false
+    },
+    {
+      "rid": 6,
+      "name": "MAX_SPD",
+      "access": "RW",
+      "range": "(0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Motion profile",
+      "unit": "rad/s, before gearbox",
+      "description": "Rotor-side speed ceiling for velocity mode in V1.4. This differs from the command vlim and the VMAX mapping scale.",
+      "extended": false
+    },
+    {
+      "rid": 7,
+      "name": "MST_ID",
+      "access": "RW",
+      "range": "[0, 0x7FF]",
+      "type": "uint32",
+      "category": "Communication",
+      "unit": "CAN identifier",
+      "description": "CAN arbitration ID used for feedback. The B601-DM software expects 0x11\u20130x17.",
+      "extended": false
+    },
+    {
+      "rid": 8,
+      "name": "ESC_ID",
+      "access": "RW",
+      "range": "[0, 0x7FF]",
+      "type": "uint32",
+      "category": "Communication",
+      "unit": "CAN identifier",
+      "description": "Base CAN receive ID for an actuator. The B601-DM software assigns 0x01\u20130x07; mode-dependent command offsets are added.",
+      "extended": false
+    },
+    {
+      "rid": 9,
+      "name": "TIMEOUT",
+      "access": "RW",
+      "range": "[0, 2^32-1]",
+      "type": "uint32",
+      "category": "Communication",
+      "unit": "50 \u00b5s ticks in V1.4",
+      "description": "Watchdog count before loss-of-command protection. Example: 20,000 ticks = 1 second. Zero behavior is not specified here.",
+      "extended": false
+    },
+    {
+      "rid": 10,
+      "name": "CTRL_MODE",
+      "access": "RW",
+      "range": "[1, 4]",
+      "type": "uint32",
+      "category": "Communication",
+      "unit": "mode code",
+      "description": "Selects the command format: 1 MIT, 2 position/velocity, 3 velocity, 4 force/position in MotorBridge. Mode 4 depends on firmware support.",
+      "extended": false
+    },
+    {
+      "rid": 11,
+      "name": "Damp",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Motor properties",
+      "unit": "N\u00b7m\u00b7s/rad",
+      "description": "Identified viscous damping. The V1.4 manual describes it as a reference value unused by that firmware; it is not MIT kd.",
+      "extended": false
+    },
+    {
+      "rid": 12,
+      "name": "Inertia",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Motor properties",
+      "unit": "kg\u00b7m\u00b2",
+      "description": "Identified rotor inertia. A motor-model property, separate from payload inertia or the robot URDF.",
+      "extended": false
+    },
+    {
+      "rid": 13,
+      "name": "hw_ver",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "uint32",
+      "category": "Identity",
+      "unit": "integer",
+      "description": "Named hardware version, but reserved in the inspected table. No portable interpretation is documented.",
+      "extended": false
+    },
+    {
+      "rid": 14,
+      "name": "sw_ver",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "uint32",
+      "category": "Identity",
+      "unit": "integer",
+      "description": "Firmware software-version identifier. Record it when comparing register behavior across actuators.",
+      "extended": false
+    },
+    {
+      "rid": 15,
+      "name": "SN",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "uint32",
+      "category": "Identity",
+      "unit": "integer",
+      "description": "Named serial number, but reserved in the inspected table. Do not assume a usable unique serial.",
+      "extended": false
+    },
+    {
+      "rid": 16,
+      "name": "NPP",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "uint32",
+      "category": "Motor properties",
+      "unit": "count",
+      "description": "Number of magnetic pole pairs used by commutation. MotorBridge exposes this as read-only.",
+      "extended": false
+    },
+    {
+      "rid": 17,
+      "name": "Rs",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Motor properties",
+      "unit": "m\u03a9 in V1.4 UI",
+      "description": "Identified phase resistance. Confirm raw-register scaling against the specific firmware; the old UI lists milliohms.",
+      "extended": false
+    },
+    {
+      "rid": 18,
+      "name": "Ls",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Motor properties",
+      "unit": "\u00b5H in V1.4 UI",
+      "description": "Identified phase inductance. Confirm raw-register scaling against firmware; the old UI lists microhenries. Also spelled LS in other libraries.",
+      "extended": false
+    },
+    {
+      "rid": 19,
+      "name": "Flux",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Motor properties",
+      "unit": "Wb",
+      "description": "Identified magnetic flux linkage used by the motor model.",
+      "extended": false
+    },
+    {
+      "rid": 20,
+      "name": "Gr",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Motor properties",
+      "unit": "ratio",
+      "description": "Gear reduction ratio, used to relate rotor movement to output-shaft movement. Read-only in this CAN register table.",
+      "extended": false
+    },
+    {
+      "rid": 21,
+      "name": "PMAX",
+      "access": "RW",
+      "range": "(0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Scaling",
+      "unit": "rad",
+      "description": "Positive magnitude used to map position to and from the packed CAN representation (\u2212PMAX to +PMAX). It is not a joint travel limit.",
+      "extended": false
+    },
+    {
+      "rid": 22,
+      "name": "VMAX",
+      "access": "RW",
+      "range": "(0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Scaling",
+      "unit": "rad/s",
+      "description": "Positive magnitude used to encode and decode velocity (\u2212VMAX to +VMAX). It is not the requested operating speed.",
+      "extended": false
+    },
+    {
+      "rid": 23,
+      "name": "TMAX",
+      "access": "RW",
+      "range": "(0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Scaling",
+      "unit": "N\u00b7m",
+      "description": "Positive magnitude used to encode and decode torque (\u2212TMAX to +TMAX). It is not a continuous-duty torque rating.",
+      "extended": false
+    },
+    {
+      "rid": 24,
+      "name": "I_BW",
+      "access": "RW",
+      "range": "[100.0, 10000.0]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware-defined bandwidth",
+      "description": "Current-loop bandwidth setting. Faster response changes noise sensitivity and stability. The inspected table does not state a physical unit.",
+      "extended": false
+    },
+    {
+      "rid": 25,
+      "name": "KP_ASR",
+      "access": "RW",
+      "range": "[0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware gain",
+      "description": "Velocity-loop proportional gain: response to present speed error. Written from POS_VEL.vel_kp by Seeed\u2019s SDK.",
+      "extended": false
+    },
+    {
+      "rid": 26,
+      "name": "KI_ASR",
+      "access": "RW",
+      "range": "[0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware gain",
+      "description": "Velocity-loop integral gain: accumulates speed error to reduce steady error. Written from POS_VEL.vel_ki.",
+      "extended": false
+    },
+    {
+      "rid": 27,
+      "name": "KP_APR",
+      "access": "RW",
+      "range": "[0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware gain",
+      "description": "Position-loop proportional gain in position/velocity control. Written from POS_VEL.pos_kp; separate from MIT kp.",
+      "extended": false
+    },
+    {
+      "rid": 28,
+      "name": "KI_APR",
+      "access": "RW",
+      "range": "[0.0, 3.4E38]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware gain",
+      "description": "Position-loop integral gain in the register table, written from POS_VEL.pos_ki. V1.4\u2019s appendix calls this a speed integral term, so its exact firmware behavior needs confirmation.",
+      "extended": false
+    },
+    {
+      "rid": 29,
+      "name": "OV_Value",
+      "access": "RW",
+      "range": "TBD",
+      "type": "float32",
+      "category": "Protection",
+      "unit": "V",
+      "description": "Upper supply-voltage threshold. The old V1.4 manual describes checking it at power-up; continuous checking is not established for every firmware.",
+      "extended": false
+    },
+    {
+      "rid": 30,
+      "name": "GREF",
+      "access": "RW",
+      "range": "(0.0, 1.0]",
+      "type": "float32",
+      "category": "Scaling",
+      "unit": "ratio",
+      "description": "Gearbox torque transmission efficiency used by torque conversion. It is a motor-model correction factor.",
+      "extended": false
+    },
+    {
+      "rid": 31,
+      "name": "Deta",
+      "access": "RW",
+      "range": "[1.0, 30.0]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "dimensionless",
+      "description": "Speed-loop damping factor. Smaller values may increase overshoot; larger values may slow the response. Separate from MIT kd.",
+      "extended": false
+    },
+    {
+      "rid": 32,
+      "name": "V_BW",
+      "access": "RW",
+      "range": "(0.0, 500.0)",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware-defined bandwidth",
+      "description": "Filtering bandwidth for the velocity loop. Sets the response/noise tradeoff; the inspected sources do not establish a universal unit.",
+      "extended": false
+    },
+    {
+      "rid": 33,
+      "name": "IQ_c1",
+      "access": "RW",
+      "range": "[100.0, 10000.0]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware coefficient",
+      "description": "Current-loop enhancement coefficient. The driver names it but does not document its internal equation or tuning method.",
+      "extended": false
+    },
+    {
+      "rid": 34,
+      "name": "VL_c1",
+      "access": "RW",
+      "range": "(0.0, 10000.0]",
+      "type": "float32",
+      "category": "Control loops",
+      "unit": "firmware coefficient",
+      "description": "Velocity-loop enhancement coefficient. Internal implementation and tuning effects are not specified in the inspected sources.",
+      "extended": false
+    },
+    {
+      "rid": 35,
+      "name": "can_br",
+      "access": "RW",
+      "range": "[0, 4]",
+      "type": "uint32",
+      "category": "Communication",
+      "unit": "enumeration 0\u20134",
+      "description": "Selects the CAN bit-rate code on supporting firmware. Code-to-bit-rate mapping is not established by these sources; do not infer it from serial baud.",
+      "extended": false
+    },
+    {
+      "rid": 36,
+      "name": "sub_ver",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "uint32",
+      "category": "Identity",
+      "unit": "integer",
+      "description": "Firmware sub-version identifier, useful alongside sw_ver.",
+      "extended": false
+    },
+    {
+      "rid": 50,
+      "name": "u_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "U-phase calibration offset. Driver metadata does not define its raw unit or correction equation.",
+      "extended": false
+    },
+    {
+      "rid": 51,
+      "name": "v_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "V-phase calibration offset. Driver metadata does not define its raw unit or correction equation.",
+      "extended": false
+    },
+    {
+      "rid": 52,
+      "name": "k1",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "First internal compensation coefficient. Its exact role is not described in the public register table.",
+      "extended": false
+    },
+    {
+      "rid": 53,
+      "name": "k2",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "Second internal compensation coefficient. Its exact role is not described in the public register table.",
+      "extended": false
+    },
+    {
+      "rid": 54,
+      "name": "m_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified angle scale",
+      "description": "Angle offset labeled m_off. The inspected table does not identify its reference frame or scale.",
+      "extended": false
+    },
+    {
+      "rid": 55,
+      "name": "dir",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "firmware encoding",
+      "description": "Direction/calibration flag. The table declares a float but does not specify allowed values; do not assume it is a \u00b11 software direction setting.",
+      "extended": false
+    },
+    {
+      "rid": 56,
+      "name": "m_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified angle scale",
+      "description": "Motor-side angle offset, also named m_off in MotorBridge. Use RID 56 to distinguish it from RID 54; availability depends on firmware.",
+      "extended": true
+    },
+    {
+      "rid": 59,
+      "name": "Imax",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Diagnostics",
+      "unit": "current; raw unit unspecified",
+      "description": "Reported maximum current of the driver board. This is read-only capability data, distinct from OC_Value.",
+      "extended": true
+    },
+    {
+      "rid": 60,
+      "name": "VBus",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Diagnostics",
+      "unit": "voltage; raw unit unspecified",
+      "description": "Supply-bus voltage readback. The register table does not define its raw scaling.",
+      "extended": true
+    },
+    {
+      "rid": 61,
+      "name": "Tpcb",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Diagnostics",
+      "unit": "temperature; raw unit unspecified",
+      "description": "Driver-board temperature readback. Confirm scaling before treating the raw value as degrees Celsius.",
+      "extended": true
+    },
+    {
+      "rid": 62,
+      "name": "Tmtr",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Diagnostics",
+      "unit": "temperature; raw unit unspecified",
+      "description": "Motor temperature readback. Confirm scaling; the standard feedback frame separately reports winding temperature in \u00b0C.",
+      "extended": true
+    },
+    {
+      "rid": 63,
+      "name": "Iu_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "U-phase current-sensor calibration offset; firmware-dependent readback.",
+      "extended": true
+    },
+    {
+      "rid": 64,
+      "name": "Iv_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "V-phase current-sensor calibration offset; firmware-dependent readback.",
+      "extended": true
+    },
+    {
+      "rid": 65,
+      "name": "Iw_off",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Calibration",
+      "unit": "unspecified",
+      "description": "W-phase current-sensor calibration offset; firmware-dependent readback.",
+      "extended": true
+    },
+    {
+      "rid": 80,
+      "name": "p_m",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Diagnostics",
+      "unit": "position; raw scale unspecified",
+      "description": "Motor position readback. The register table does not fully establish its coordinate convention or units.",
+      "extended": false
+    },
+    {
+      "rid": 81,
+      "name": "xout",
+      "access": "RO",
+      "range": "Not specified",
+      "type": "float32",
+      "category": "Diagnostics",
+      "unit": "position; raw scale unspecified",
+      "description": "Output-shaft position readback. Distinguish this from motor-side position; verify zero and scaling on the specific firmware.",
+      "extended": false
+    }
+  ],
+  "categories": [
+    "Protection",
+    "Scaling",
+    "Motion profile",
+    "Communication",
+    "Motor properties",
+    "Identity",
+    "Control loops",
+    "Calibration",
+    "Diagnostics"
+  ]
+}

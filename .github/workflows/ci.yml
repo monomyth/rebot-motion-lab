@@ -1,0 +1,48 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: swift --version
+      - name: Test core and MCP transport
+        run: bash scripts/swift-local.sh test
+      - name: Build universal application
+        if: matrix.os == 'macos-15'
+        run: bash scripts/build-app.sh ./dist
+      - name: Package application
+        if: matrix.os == 'macos-15'
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/ReBot Motion Lab.app" "dist/ReBot-Motion-Lab-macOS.zip"
+      - name: Upload application
+        if: matrix.os == 'macos-15'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ReBot-Motion-Lab-macOS
+          path: dist/ReBot-Motion-Lab-macOS.zip
+          if-no-files-found: error
+          retention-days: 14

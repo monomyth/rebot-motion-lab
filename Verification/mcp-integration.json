@@ -1,0 +1,13 @@
+{
+  "app_version": "1.4",
+  "passed": [
+    "MCP handshake, tool/resource discovery, and unavailable-app error",
+    "Live native instance identity, folded startup, and private socket permissions",
+    "Smooth joint and gripper motion reaches requested endpoints; overlapping motion rejected",
+    "Invalid types, bounds, array lengths, and unreachable IK preserve pose and revision",
+    "Preset, six-joint pose, and Cartesian IK commands complete in the native scene",
+    "Waypoint add/clear/atomic replace, speed, sequence play/pause/resume/completion",
+    "Stop holds pose, camera/overlay controls, and scoped state/reference resources",
+    "Malformed IPC recovery and reset to folded startup"
+  ]
+}

@@ -1,0 +1,221 @@
+import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+import RobotCore
+import simd
+
+enum WorkspacePage: String, CaseIterable, Identifiable {
+    case simulator = "Simulator", actuators = "Actuator reference", mcp = "MCP control", about = "About & sources"
+    var id: String { rawValue }
+    var icon: String {
+        switch self { case .simulator: return "cube.transparent"; case .actuators: return "slider.horizontal.3"; case .mcp: return "point.3.connected.trianglepath.dotted"; case .about: return "info.circle" }
+    }
+}
+typealias PlaybackState = MotionPlayer.State
+
+@MainActor final class PoseControls: ObservableObject {
+    @Published private(set) var pose = Pose.startup
+    func update(_ value: Pose) {
+        if pose.joints != value.joints || pose.grip != value.grip { pose = value }
+    }
+}
+
+@MainActor final class MotionReadout: ObservableObject {
+    @Published private(set) var pose = Pose.startup
+    private(set) var tcp = SIMD3<Double>(repeating: 0)
+    private(set) var progress = 0.0
+    func update(pose: Pose, tcp: SIMD3<Double>, progress: Double) {
+        self.tcp = tcp; self.progress = progress; self.pose = pose
+    }
+}
+
+@MainActor final class AppModel: ObservableObject {
+    let robot: Kinematics
+    let reference: ActuatorReference
+    @Published var page: WorkspacePage = .simulator {
+        didSet {
+            if page != .simulator {
+                if playback == .playing { pause(); status = "Playback paused" }
+                if manualMoving { stop() }
+            }
+        }
+    }
+    private(set) var current = Pose.startup
+    @Published var waypoints = Pose.example
+    @Published var speed = 50.0
+    @Published private(set) var playback: PlaybackState = .stopped
+    @Published private(set) var manualMoving = false
+    @Published private(set) var activeWaypoint: Int?
+    private(set) var progress = 0.0
+    @Published var showGrid = true
+    @Published var showAxes = true
+    @Published var showTrace = false
+    @Published var camera = "Orbit"
+    @Published var cameraRevision = 0
+    @Published var traceRevision = 0
+    @Published var targetX = 542.9
+    @Published var targetY = 0.0
+    @Published var targetZ = 409.3
+    @Published var status = "Folded startup position · Select Ready to unfold"
+    @Published var error: String?
+    @Published var sceneReady = false
+    @Published var sceneError: String?
+    @Published var referenceSection: ReferenceSection = .overview
+    @Published var referenceSearch = ""
+    // A frozen RealityKit frame lets the development harness capture the native overlays too.
+    @Published var captureImage: NSImage?
+    let telemetry = MotionReadout()
+    let poseControls = PoseControls()
+    let mcpControl = MCPControl()
+    // Retain the native scene so reference navigation doesn't reload 34 STL meshes.
+    var viewport: RobotViewport?
+    private var player = MotionPlayer(current: .startup)
+    private var manual = ManualMotion(current: .startup)
+    private var readoutElapsed = 0.0
+    private var isSequence = true
+    private var completionStatus = "Sequence complete"
+    var tcp: SIMD3<Double> { robot.position(current.joints) * 1000 }
+    var controlsLocked: Bool { playback != .stopped }
+    var hasMotion: Bool { controlsLocked || manualMoving }
+
+    init() throws {
+        robot = Kinematics(try RobotDefinition.load())
+        reference = try ActuatorReference.load()
+        publishReadout(); useCurrentTarget()
+        mcpControl.attach(self)
+    }
+    private func apply(_ pose: Pose, immediately: Bool) {
+        current = pose
+        viewport?.applyPose(pose)
+        if immediately { publishReadout() }
+    }
+    private func publishReadout() {
+        telemetry.update(pose: current, tcp: tcp, progress: progress)
+        if !manualMoving { poseControls.update(current) }
+        readoutElapsed = 0
+    }
+    private func adjust(to pose: Pose) {
+        if !manualMoving { manual.reset(to: current) }
+        manual.retarget(to: pose)
+        poseControls.update(pose)
+        if manualMoving != manual.isMoving {
+            manualMoving = manual.isMoving
+            if manualMoving { progress = 0; status = "Adjusting pose" }
+        }
+    }
+    private func cancelManual() {
+        manual.reset(to: current)
+        if manualMoving { manualMoving = false }
+        poseControls.update(current)
+    }
+    func setJoint(_ index: Int, _ value: Double) {
+        guard !controlsLocked, value.isFinite, current.joints.indices.contains(index) else { return }
+        var pose = manualMoving ? manual.target : current
+        pose.joints[index] = value; pose.joints = robot.clampPose(pose.joints)
+        adjust(to: pose)
+    }
+    func setGrip(_ value: Double) {
+        guard !controlsLocked, value.isFinite else { return }
+        var pose = manualMoving ? manual.target : current; pose.grip = clamp(value, 0, 90)
+        adjust(to: pose)
+    }
+    func setPose(_ pose: Pose) {
+        guard !controlsLocked else { return }
+        cancelManual()
+        apply(Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90)), immediately: true)
+        status = "\(pose.name) pose"
+    }
+    func moveToPose(_ pose: Pose, completion: String? = nil) {
+        guard !controlsLocked else { return }
+        cancelManual()
+        let bounded = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
+        completionStatus = completion ?? "\(pose.name) pose reached"
+        if bounded.joints == current.joints && bounded.grip == current.grip { status = completionStatus; publishReadout(); return }
+        isSequence = false; page = .simulator
+        player.start([bounded], from: current); playback = .playing; activeWaypoint = nil; progress = 0
+        status = "Moving to \(pose.name)"; publishReadout()
+    }
+    func reset() {
+        stop(); apply(.startup, immediately: true)
+        resetCamera("Orbit"); traceRevision += 1; useCurrentTarget(); status = "Reset to folded startup position"
+    }
+    func resetCamera(_ name: String) { camera = name; cameraRevision += 1 }
+    func useCurrentTarget() { let p = tcp; targetX = p.x; targetY = p.y; targetZ = p.z }
+    func solve() {
+        guard !controlsLocked else { return }
+        let result = robot.solve(target: SIMD3(targetX, targetY, targetZ) / 1000, initial: current.joints)
+        if result.success {
+            moveToPose(Pose(name: "target", joints: result.joints, grip: current.grip), completion: String(format: "Target reached · %.2f mm error", result.error * 1000))
+        } else { status = "No solution within 2 mm from this pose. Try a closer target or another starting pose." }
+    }
+    func addWaypoint() {
+        guard !controlsLocked else { return }
+        // Capture the values shown in the controls, including a just-released slider.
+        let pose = manualMoving ? manual.target : current
+        waypoints.append(Pose(name: "Pose \(waypoints.count + 1)", joints: pose.joints, grip: pose.grip))
+        status = "Pose added to sequence"
+    }
+    private func pause() { player.pause(); playback = .paused; publishReadout() }
+    func playPause() {
+        page = .simulator
+        if playback == .playing { pause(); status = "Playback paused"; return }
+        if playback == .paused { player.resume(); playback = .playing; status = "Playback resumed"; return }
+        guard !waypoints.isEmpty else { return }
+        cancelManual()
+        isSequence = true; completionStatus = "Sequence complete"
+        player.start(waypoints, from: current); playback = .playing; activeWaypoint = 0; progress = 0
+        status = "Playing sequence"; publishReadout()
+    }
+    // Invoked by RealityKit's frame event, without routing animation through SwiftUI.
+    func advance(seconds: Double) {
+        guard seconds.isFinite, seconds > 0 else { return }
+        if manualMoving {
+            manual.advance(seconds: seconds)
+            apply(manual.current, immediately: false)
+            readoutElapsed += seconds
+            if !manual.isMoving { manualMoving = false; status = "Pose reached" }
+            if readoutElapsed >= 1.0 / 15 || !manualMoving { publishReadout() }
+            return
+        }
+        guard playback == .playing else { return }
+        player.advance(seconds: seconds, speed: isSequence ? speed : 100)
+        progress = player.progress
+        apply(player.current, immediately: false)
+        let index = isSequence ? player.index : nil
+        if activeWaypoint != index { activeWaypoint = index }
+        readoutElapsed += max(0, seconds)
+        if readoutElapsed >= 1.0 / 15 || player.state == .stopped { publishReadout() }
+        if player.state == .stopped { playback = .stopped; status = completionStatus }
+    }
+    func stop() {
+        cancelManual()
+        player.stop(); playback = .stopped; activeWaypoint = nil; progress = 0
+        status = "Motion stopped"; publishReadout()
+    }
+    func exportTrajectory() {
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "B601-DM-trajectory.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(TrajectoryFile(poses: waypoints, speed: speed)).write(to: url, options: .atomic)
+            status = "Trajectory saved"
+        } catch { self.error = error.localizedDescription }
+    }
+    func importTrajectory() {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size < 2_000_000 else { throw TrajectoryError.invalid }
+            let file = try JSONDecoder().decode(TrajectoryFile.self, from: Data(contentsOf: url))
+            let poses = try file.validated(using: robot)
+            stop(); waypoints = poses; speed = file.speed_percent; status = "Imported \(poses.count) waypoints"
+        } catch { self.error = error.localizedDescription }
+    }
+    func saveReference() {
+        let panel = NSSavePanel(); panel.nameFieldStringValue = "B601-DM-actuator-settings.md"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try Data(contentsOf: Assets.url("B601-DM-actuator-settings.md")).write(to: url, options: .atomic) }
+        catch { self.error = error.localizedDescription }
+    }
+}

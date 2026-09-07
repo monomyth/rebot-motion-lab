@@ -1,0 +1,79 @@
+{
+  "format": "rebot-motion-lab-v1",
+  "robot": "B601-DM",
+  "simulation": "kinematic",
+  "angle_unit": "degrees",
+  "gripper_unit": "mm",
+  "speed_percent": 50,
+  "interpolation": "quintic smoothstep",
+  "joint_order": [
+    "joint1",
+    "joint2",
+    "joint3",
+    "joint4",
+    "joint5",
+    "joint6"
+  ],
+  "poses": [
+    {
+      "name": "Ready",
+      "joints": [
+        0,
+        -95,
+        -95,
+        10,
+        0,
+        0
+      ],
+      "gripper_opening": 60
+    },
+    {
+      "name": "Reach left",
+      "joints": [
+        -35,
+        -125,
+        -115,
+        30,
+        0,
+        0
+      ],
+      "gripper_opening": 60
+    },
+    {
+      "name": "Close gripper",
+      "joints": [
+        -35,
+        -125,
+        -115,
+        30,
+        0,
+        0
+      ],
+      "gripper_opening": 0
+    },
+    {
+      "name": "Lift & turn",
+      "joints": [
+        35,
+        -90,
+        -105,
+        15,
+        0,
+        0
+      ],
+      "gripper_opening": 0
+    },
+    {
+      "name": "Release",
+      "joints": [
+        35,
+        -90,
+        -105,
+        15,
+        0,
+        0
+      ],
+      "gripper_opening": 60
+    }
+  ]
+}

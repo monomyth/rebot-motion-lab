@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Exercise the packaged stdio server against an isolated native simulator instance."""
+import argparse
+import json
+import os
+from pathlib import Path
+import selectors
+import socket
+import subprocess
+import tempfile
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("app", type=Path)
+parser.add_argument("output", type=Path)
+options = parser.parse_args()
+app = options.app.resolve()
+options.output.mkdir(parents=True, exist_ok=True)
+checks = []
+
+class Client:
+    def __init__(self, env, log):
+        self.process = subprocess.Popen([str(app / "Contents/MacOS/ReBotMCP")], stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE, stderr=log, env=env, text=True, bufsize=1)
+        self.selector = selectors.DefaultSelector()
+        self.selector.register(self.process.stdout, selectors.EVENT_READ)
+        self.index = 0
+
+    def send(self, message):
+        self.process.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
+        self.process.stdin.flush()
+
+    def rpc(self, method, params=None):
+        self.index += 1
+        self.send({"jsonrpc": "2.0", "id": self.index, "method": method, "params": params or {}})
+        assert self.selector.select(20), f"Timeout in {method}"
+        line = self.process.stdout.readline()
+        assert line, f"Server exited: {self.process.poll()}"
+        reply = json.loads(line)
+        assert reply["id"] == self.index and reply["jsonrpc"] == "2.0", reply
+        return reply
+
+    def initialize(self):
+        result = self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
+                     "clientInfo": {"name": "rebot-integration-test", "version": "1"}})["result"]
+        assert result["protocolVersion"] == "2025-11-25"
+        self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def call(self, name, arguments=None, fails=False):
+        result = self.rpc("tools/call", {"name": name, "arguments": arguments or {}})["result"]
+        assert bool(result.get("isError")) == fails, result
+        if fails:
+            return result["content"][0]["text"]
+        parsed = json.loads(result["content"][0]["text"])
+        assert parsed == result["structuredContent"]
+        return parsed
+
+    def state(self):
+        return self.call("rebot_get_state")
+
+    def wait_stopped(self, timeout=12):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            state = self.state()
+            if state["playback"] == "stopped" and not state["manual_motion"]: return state
+            time.sleep(0.08)
+        raise AssertionError("Motion did not complete")
+
+    def close(self):
+        self.process.stdin.close()
+        self.process.wait(timeout=5)
+        assert self.process.returncode == 0
+        self.selector.close()
+
+with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
+    env = {**os.environ, "REBOT_CONTROL_DIRECTORY": directory, "REBOT_MCP_NO_LAUNCH": "1"}
+    with (options.output / "native.log").open("w") as native_log, (options.output / "server.log").open("w") as server_log:
+        client = Client(env, server_log)
+        simulator = None
+        try:
+            client.initialize()
+            assert len(client.rpc("tools/list")["result"]["tools"]) == 12
+            assert len(client.rpc("resources/list")["result"]["resources"]) == 2
+            client.call("rebot_get_state", fails=True)
+            checks.append("MCP handshake, tool/resource discovery, and unavailable-app error")
+            simulator = subprocess.Popen([str(app / "Contents/MacOS/ReBotMotionLab"), "--mcp-integration-test"],
+                                         env=env, stdout=native_log, stderr=native_log)
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if (Path(directory) / "control.sock").exists():
+                    state = client.state()
+                    if state["scene_ready"]: break
+                time.sleep(0.25)
+            else: raise AssertionError("Native scene never became ready")
+            assert state["process_id"] == simulator.pid and state["joints_deg"] == [0]*6 and state["gripper_mm"] == 0
+            assert not state["hardware_connected"]
+            assert (Path(directory) / "control.sock").stat().st_mode & 0o777 == 0o600
+            checks.append("Live native instance identity, folded startup, and private socket permissions")
+            result = client.call("rebot_set_joint", {"joint": 1, "angle_deg": 25})
+            assert result["accepted"] and result["state"]["playback"] == "playing"
+            client.call("rebot_set_gripper", {"opening_mm": 20}, fails=True)
+            assert abs(client.wait_stopped()["joints_deg"][0] - 25) < 0.001
+            client.call("rebot_set_gripper", {"opening_mm": 35})
+            assert client.wait_stopped()["gripper_mm"] == 35
+            checks.append("Smooth joint and gripper motion reaches requested endpoints; overlapping motion rejected")
+            before = client.state()
+            for name, args in [("rebot_set_joint", {"joint": 1, "angle_deg": 999}),
+                               ("rebot_set_joint", {"joint": 7, "angle_deg": 0}),
+                               ("rebot_set_joint", {"joint": True, "angle_deg": 0}),
+                               ("rebot_set_gripper", {"opening_mm": -1}),
+                               ("rebot_move_joints", {"joints_deg": [0,0,0,0,0]}),
+                               ("rebot_move_to_position", {"x_mm": 5000, "y_mm": 5000, "z_mm": 5000})]:
+                client.call(name, args, fails=True)
+            assert client.state()["joints_deg"] == before["joints_deg"]
+            assert client.state()["command_revision"] == before["command_revision"]
+            checks.append("Invalid types, bounds, array lengths, and unreachable IK preserve pose and revision")
+            client.call("rebot_apply_preset", {"name": "Ready"})
+            ready = client.wait_stopped()
+            assert ready["joints_deg"] == [0,-95,-95,10,0,0]
+            tcp = ready["tcp_mm"]
+            client.call("rebot_move_to_position", {"x_mm": tcp["x"]-10, "y_mm": tcp["y"]+10, "z_mm": tcp["z"]+10})
+            moved = client.wait_stopped()["tcp_mm"]
+            assert sum((moved[k] - (tcp[k] + (-10 if k == "x" else 10)))**2 for k in tcp)**0.5 < 2
+            client.call("rebot_move_joints", {"joints_deg": [0,-95,-95,10,0,0], "gripper_mm": 20})
+            assert client.wait_stopped()["gripper_mm"] == 20
+            checks.append("Preset, six-joint pose, and Cartesian IK commands complete in the native scene")
+            client.call("rebot_clear_sequence")
+            client.call("rebot_add_waypoint", {"name": "Current"})
+            assert client.state()["waypoints"][0]["name"] == "Current"
+            sequence = [{"name": "Left", "joints_deg": [-20,-95,-95,10,0,0], "gripper_mm": 20},
+                        {"name": "Right", "joints_deg": [20,-95,-95,10,0,0], "gripper_mm": 0}]
+            client.call("rebot_set_sequence", {"poses": sequence})
+            snapshot = client.state()["waypoints"]
+            client.call("rebot_set_sequence", {"poses": sequence + [{"name":"Bad", "joints_deg":[999]*6, "gripper_mm": 0}]}, fails=True)
+            assert client.state()["waypoints"] == snapshot
+            client.call("rebot_set_speed", {"percent": 100})
+            client.call("rebot_playback", {"action": "play"})
+            time.sleep(0.15)
+            client.call("rebot_playback", {"action": "pause"})
+            paused = client.state()["joints_deg"]
+            time.sleep(0.25)
+            assert client.state()["joints_deg"] == paused
+            client.call("rebot_playback", {"action": "resume"})
+            assert client.wait_stopped()["joints_deg"][0] == 20
+            checks.append("Waypoint add/clear/atomic replace, speed, sequence play/pause/resume/completion")
+            client.call("rebot_playback", {"action": "play"})
+            client.call("rebot_playback", {"action": "stop"})
+            stopped = client.state()["joints_deg"]
+            time.sleep(0.2)
+            assert client.state()["joints_deg"] == stopped
+            client.call("rebot_set_view", {"camera": "Front", "grid": False, "trace": True, "tool_axes": False, "clear_trace": True})
+            assert client.state()["view"] == {"camera": "Front", "grid": False, "trace": True, "tool_axes": False}
+            reference = client.rpc("resources/read", {"uri": "rebot://actuators"})["result"]["contents"][0]["text"]
+            assert "PMAX" in reference and "Damiao" in reference
+            assert "error" in client.rpc("resources/read", {"uri": "file:///etc/passwd"})
+            resource_state = client.rpc("resources/read", {"uri": "rebot://state"})["result"]["contents"][0]["text"]
+            assert json.loads(resource_state)["process_id"] == simulator.pid
+            checks.append("Stop holds pose, camera/overlay controls, and scoped state/reference resources")
+            # A malformed private-IPC request must not crash the app or block subsequent clients.
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as raw:
+                raw.settimeout(6); raw.connect(str(Path(directory)/"control.sock")); raw.sendall(b"not-json\n")
+                assert json.loads(raw.recv(8192))["ok"] is False
+            client.call("rebot_playback", {"action": "reset"})
+            assert client.state()["joints_deg"] == [0]*6 and client.state()["gripper_mm"] == 0
+            checks.append("Malformed IPC recovery and reset to folded startup")
+            (options.output / "mcp-result.json").write_text(json.dumps({"passed": checks, "final_state": client.state()}, indent=2))
+            print(f"PASS: {len(checks)} MCP integration groups")
+        except Exception as error:
+            (options.output / "mcp-error.txt").write_text(str(error))
+            raise
+        finally:
+            client.close()
+            if simulator is not None:
+                simulator.terminate()
+                simulator.wait(timeout=10)

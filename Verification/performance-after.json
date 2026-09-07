@@ -1,0 +1,30 @@
+[
+  {
+    "cpu_seconds" : 5.0703069999999997,
+    "frames" : 378,
+    "frames_over_33ms" : 87,
+    "frames_per_second" : 37.678303228975111,
+    "indexed_vertices" : 1018428,
+    "main_model_notifications" : 7,
+    "median_frame_ms" : 16.832908004289493,
+    "original_vertices" : 1292736,
+    "p95_frame_ms" : 124.5812599954661,
+    "seconds" : 10.032298898993758,
+    "trace" : false,
+    "trace_entities" : 0
+  },
+  {
+    "cpu_seconds" : 5.5741739999999993,
+    "frames" : 540,
+    "frames_over_33ms" : 42,
+    "frames_per_second" : 53.961081945535945,
+    "indexed_vertices" : 1018428,
+    "main_model_notifications" : 7,
+    "median_frame_ms" : 16.762932995334268,
+    "original_vertices" : 1292736,
+    "p95_frame_ms" : 34.050280024530366,
+    "seconds" : 10.007212245021947,
+    "trace" : true,
+    "trace_entities" : 9
+  }
+]

@@ -1,0 +1,10 @@
+* text=auto
+*.swift text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.stl binary
+*.STL binary
+*.png binary
+Sources/RobotCore/Resources/model/** linguist-vendored

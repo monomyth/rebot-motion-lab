@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "rebot": {
+      "command": "/Applications/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP",
+      "args": []
+    }
+  }
+}

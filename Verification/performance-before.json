@@ -1,0 +1,26 @@
+[
+  {
+    "cpu_seconds" : 10.278121000000001,
+    "frames" : 111,
+    "frames_over_33ms" : 104,
+    "frames_per_second" : 11.067295852982403,
+    "main_model_notifications" : 477,
+    "median_frame_ms" : 46.122858999297023,
+    "p95_frame_ms" : 440.70522699621506,
+    "seconds" : 10.029550260020187,
+    "trace" : false,
+    "trace_entities" : 0
+  },
+  {
+    "cpu_seconds" : 10.701690999999999,
+    "frames" : 113,
+    "frames_over_33ms" : 99,
+    "frames_per_second" : 11.232332195139488,
+    "main_model_notifications" : 459,
+    "median_frame_ms" : 51.546467992011458,
+    "p95_frame_ms" : 286.56522498931736,
+    "seconds" : 10.060243771004025,
+    "trace" : true,
+    "trace_entities" : 720
+  }
+]

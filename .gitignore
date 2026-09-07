@@ -1,0 +1,21 @@
+# Swift and Xcode
+.build
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Local builds and verification runs
+dist/
+work/
+*.app/
+*.zip
+__pycache__/
+*.pyc
+
+# Local configuration
+.env
+.env.*
+!.env.example
+.DS_Store
+Verification/mcp-install.json
