@@ -1,10 +1,10 @@
 # Agent notes (Codex, Cursor, and other coding agents)
 
-This is the native macOS ReBot Motion Lab package (`SwiftUI` + `AppKit` + `RealityKit`). The browser prototype lives in a sibling folder and is not this app.
+This repository contains the native macOS ReBot Motion Lab Swift package (`SwiftUI` + `AppKit` + `RealityKit`), its MCP server, and the browser simulator in `web/`. The repository root is the Swift package root; run web commands from `web/`.
 
 **Read [HANDOFF.md](HANDOFF.md) before changing sliders, pose updates, or smoke checks.** Codex’s v1.4 manual-motion filter is the bug that made dragging feel like dropped FPS; it is not a feature to restore.
 
-The intended long-term home is one repository for the web simulator, native Swift app, and MCP tools. The user has deferred consolidation: keep the current layout and do not move the web project or restructure these components as part of the initial GitHub publication.
+The user has authorized consolidation into this repository. Preserve the motion architecture below when updating either app. Floor contact must include every moving link and both gripper fingers, including their tips.
 
 ## Motion architecture
 
@@ -33,3 +33,9 @@ bash scripts/build-app.sh ./dist
 ```
 
 Slider-drag smoke (`--smoke-test`) must keep `current` on the requested value, keep `main_model_notifications` low, and must **not** require lagging scene frames. If a test “fails” because the arm no longer trails the slider, fix the test, not the app.
+
+## Floor stops
+
+Manual setters return the accepted value after geometric floor limiting. The native slider action may set `doubleValue` directly when the floor clamps an input; `updateNSView` must still avoid setting it during tracking. Keep this physical stop separate from motion smoothing. See `docs/DEVELOPMENT.md` for geometry generation and swept-path checks.
+
+Idle slider rows subscribe to `PoseControls.$pose` with `onReceive` and update local state only when their own value changes. This keeps Reset, presets, playback, and MCP synchronized without observing the entire panel. Do not remove that subscription: a plain `displayed` property can remain unchanged across a Reset even when the row has stale local state.

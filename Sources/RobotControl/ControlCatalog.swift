@@ -2,7 +2,7 @@ import Foundation
 import CoreFoundation
 
 public enum ControlCatalog {
-    public static let version = "1.4"
+    public static let version = "1.5"
     private static func number(_ description: String, min: Double? = nil, max: Double? = nil) -> [String: Any] {
         var s: [String: Any] = ["type": "number", "description": description]
         if let min { s["minimum"] = min }; if let max { s["maximum"] = max }; return s

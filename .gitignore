@@ -19,3 +19,10 @@ __pycache__/
 !.env.example
 .DS_Store
 Verification/mcp-install.json
+
+# Web dependencies and build state
+node_modules/
+.next/
+.vinext/
+.wrangler/
+*.tsbuildinfo

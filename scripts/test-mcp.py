@@ -156,6 +156,16 @@ with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
             resource_state = client.rpc("resources/read", {"uri": "rebot://state"})["result"]["contents"][0]["text"]
             assert json.loads(resource_state)["process_id"] == simulator.pid
             checks.append("Stop holds pose, camera/overlay controls, and scoped state/reference resources")
+            client.call("rebot_move_joints", {"joints_deg": [0,-95,-95,10,0,90], "gripper_mm": 90})
+            before_floor = client.wait_stopped()
+            rejected = client.call("rebot_set_joint", {"joint": 2, "angle_deg": -179}, fails=True)
+            assert "base plane" in rejected
+            after_floor = client.state()
+            assert after_floor["joints_deg"] == before_floor["joints_deg"]
+            assert after_floor["command_revision"] == before_floor["command_revision"]
+            assert after_floor["floor"]["enabled"] and after_floor["floor"]["height_mm"] == -1
+            assert after_floor["floor"]["minimum_robot_height_mm"] >= -1
+            checks.append("MCP rejects gripper-tip floor penetration and exposes the solid-plane state")
             # A malformed private-IPC request must not crash the app or block subsequent clients.
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as raw:
                 raw.settimeout(6); raw.connect(str(Path(directory)/"control.sock")); raw.sendall(b"not-json\n")

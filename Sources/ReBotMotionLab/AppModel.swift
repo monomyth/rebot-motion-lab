@@ -30,6 +30,7 @@ typealias PlaybackState = MotionPlayer.State
 }
 
 @MainActor final class AppModel: ObservableObject {
+    let floor: FloorConstraint
     let robot: Kinematics
     let reference: ActuatorReference
     @Published var page: WorkspacePage = .simulator {
@@ -81,6 +82,7 @@ typealias PlaybackState = MotionPlayer.State
 
     init() throws {
         robot = Kinematics(try RobotDefinition.load())
+        floor = try FloorConstraint(robot)
         reference = try ActuatorReference.load()
         publishReadout(); useCurrentTarget()
         mcpControl.attach(self)
@@ -112,30 +114,37 @@ typealias PlaybackState = MotionPlayer.State
             lastReadoutTime = now
         }
     }
-    func setJoint(_ index: Int, _ value: Double) {
-        guard !controlsLocked, value.isFinite, current.joints.indices.contains(index) else { return }
+    @discardableResult func setJoint(_ index: Int, _ value: Double) -> Double {
+        guard current.joints.indices.contains(index) else { return 0 }
+        guard !controlsLocked, value.isFinite else { return current.joints[index] }
         var pose = current
         pose.joints[index] = value
         pose.joints = robot.clampPose(pose.joints)
-        applyInteractive(pose)
+        applyInteractive(floor.limited(from: current, to: pose))
+        return current.joints[index]
     }
-    func setGrip(_ value: Double) {
-        guard !controlsLocked, value.isFinite else { return }
+    @discardableResult func setGrip(_ value: Double) -> Double {
+        guard !controlsLocked, value.isFinite else { return current.grip }
         var pose = current
         pose.grip = clamp(value, 0, 90)
-        applyInteractive(pose)
+        applyInteractive(floor.limited(from: current, to: pose))
+        return current.grip
     }
     func setPose(_ pose: Pose) {
         guard !controlsLocked else { return }
         setManualTracking(false)
-        apply(Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90)), immediately: true)
-        status = "\(pose.name) pose"
+        let target = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
+        let allowed = floor.limited(from: current, to: target)
+        apply(allowed, immediately: true)
+        status = allowed.joints == target.joints && allowed.grip == target.grip ? "\(pose.name) pose" : "Stopped at base plane"
     }
     func moveToPose(_ pose: Pose, completion: String? = nil) {
         guard !controlsLocked else { return }
         setManualTracking(false)
-        let bounded = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
-        completionStatus = completion ?? "\(pose.name) pose reached"
+        let requested = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
+        let bounded = floor.limited(from: current, to: requested)
+        let hitFloor = bounded.joints != requested.joints || bounded.grip != requested.grip
+        completionStatus = hitFloor ? "Stopped at base plane · Move away to continue" : (completion ?? "\(pose.name) pose reached")
         if bounded.joints == current.joints && bounded.grip == current.grip { status = completionStatus; publishReadout(); return }
         isSequence = false; page = .simulator
         player.start([bounded], from: current); playback = .playing; activeWaypoint = nil; progress = 0
@@ -167,7 +176,17 @@ typealias PlaybackState = MotionPlayer.State
         guard !waypoints.isEmpty else { return }
         setManualTracking(false)
         isSequence = true; completionStatus = "Sequence complete"
-        player.start(waypoints, from: current); playback = .playing; activeWaypoint = 0; progress = 0
+        var route = [Pose](), from = current
+        for target in waypoints {
+            let allowed = floor.limited(from: from, to: target)
+            route.append(allowed)
+            if allowed.joints != target.joints || allowed.grip != target.grip {
+                completionStatus = "Stopped at base plane · Move away to continue"
+                break
+            }
+            from = allowed
+        }
+        player.start(route, from: current); playback = .playing; activeWaypoint = 0; progress = 0
         status = "Playing sequence"; publishReadout()
     }
     // Invoked by RealityKit's frame event, without routing animation through SwiftUI.
@@ -175,6 +194,8 @@ typealias PlaybackState = MotionPlayer.State
         guard seconds.isFinite, seconds > 0, playback == .playing else { return }
         player.advance(seconds: seconds, speed: isSequence ? speed : 100)
         progress = player.progress
+        // The complete route was checked before starting, including skipped waypoint
+        // boundaries after a long frame. Rendering remains independent of collision work.
         apply(player.current, immediately: false)
         let index = isSequence ? player.index : nil
         if activeWaypoint != index { activeWaypoint = index }

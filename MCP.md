@@ -1,6 +1,6 @@
 # Control ReBot Motion Lab through MCP
 
-Version 1.4 includes **ReBotMCP**, a native universal macOS executable that exposes the running Swift simulator to an MCP client over standard input/output. It is bundled inside `ReBot Motion Lab.app/Contents/MacOS/ReBotMCP`. No Python, Node, API key, or package installation is required to use the server.
+Version 1.5 includes **ReBotMCP**, a native universal macOS executable that exposes the running Swift simulator to an MCP client over standard input/output. It is bundled inside `ReBot Motion Lab.app/Contents/MacOS/ReBotMCP`. No Python, Node, API key, or package installation is required to use the server.
 
 Open the app's **MCP control** page to enable/disable access, copy a configuration with the current executable path, and inspect recent commands. MCP control is enabled by default; turning it off stops motion and saves that preference. Only one app instance provides MCP control at a time.
 
@@ -79,7 +79,7 @@ The MCP client launches ReBotMCP as a subprocess. Its stdout contains only newli
 
 The helper talks to the GUI through a Unix domain socket in a private per-user temporary directory. The directory is mode 0700, the socket mode 0600, both ends verify the peer's user ID, and an instance lock prevents two apps from taking over the same socket. There is no HTTP listener or external network endpoint. IPC messages are bounded to 1 MiB and have I/O timeouts. If a connection fails after a command was sent, the helper does not retry it automatically; read state before retrying.
 
-These tools operate the **kinematic simulator only**. The app has no robot hardware connection, CAN transport, collision checking, or actuator dynamics model.
+These tools operate the **kinematic simulator only**. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips. Targets below the floor are rejected; an obstructed path stops at contact. Read `status` and actual pose to distinguish contact from reaching the requested target. State includes the floor height and minimum moving-mesh height.
 
 ## Developer checks
 

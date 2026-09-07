@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 — 2026-09-07
 
+- Unified the web simulator, native Swift app, and native MCP server in one repository, preserving both source histories.
+- Added solid base-plane stops for all moving geometry, including both gripper fingertips, with immediate slider clamping and swept-path checks.
+- Added matching Swift/web collision tests and web CI.
+- Kept idle joint controls synchronized after Reset, presets, playback, and MCP moves without rebuilding the full control panel during dragging.
 - Joint and gripper sliders apply the rendered pose immediately. Interactive dragging no longer uses a 100 ms damped chase or a SwiftUI `Slider` bound to a republishing observable object.
 
 ## 1.4.0 — 2026-09-07
 
-First public source release of ReBot Motion Lab. The macOS application reports version 1.4.
+Earlier native source milestone. The application reported version 1.4; the initial public repository includes the newer 1.5 changes above.
 
 ### Simulator
 

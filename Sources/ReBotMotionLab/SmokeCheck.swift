@@ -52,6 +52,8 @@ import simd
                 try checkManualCancellation(model)
                 try await checkManualFrames(model, viewport: viewport, folder: folder)
                 results.append("Manual targets, native slider bindings, immediate pose updates, reversals, limits, and Stop/Reset/preset/navigation cancellation passed")
+                try await checkFloorControls(model)
+                results.append("Solid base plane stops both fingertips, clamps native slider values, and permits immediate reversal")
                 model.useCurrentTarget(); model.solve()
                 guard simd_distance(model.tcp, SIMD3(model.targetX, model.targetY, model.targetZ)) < 2 else { throw CheckError.failed("IK target") }
                 model.setPose(start)
@@ -248,6 +250,48 @@ import simd
             "lagging_scene_updates": laggingFrames, "tracked_scene_updates": trackedFrames, "main_model_notifications": notifications, "readout_notifications": readouts,
             "final_angle": model.current.joints[0], "samples": frames]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: folder.appendingPathComponent("manual-motion.json"))
+    }
+    private static func checkFloorControls(_ model: AppModel) async throws {
+        model.reset()
+        model.setPose(Pose(name: "Ready", joints: homePose, grip: 90))
+        model.setJoint(5, 90)
+        try await Task.sleep(for: .milliseconds(200))
+        func sliders(_ view: NSView) -> [NSSlider] {
+            if let slider = view as? NSSlider { return [slider] }
+            return view.subviews.flatMap(sliders)
+        }
+        guard let content = mainWindow?.contentView,
+              let shoulder = sliders(content).first(where: { $0.accessibilityLabel() == "Joint 2 angle in degrees" })
+        else { throw CheckError.failed("Native shoulder slider unavailable") }
+        model.setManualTracking(true)
+        var notifications = 0
+        let changes = model.objectWillChange.sink { notifications += 1 }
+        shoulder.doubleValue = -179
+        guard shoulder.sendAction(shoulder.action, to: shoulder.target),
+              model.current.joints[1] > -134, model.current.joints[1] < -132,
+              abs(shoulder.doubleValue - model.current.joints[1]) < 1e-8,
+              model.floor.minimumHeight(model.current) >= FloorConstraint.height,
+              model.tcp.z > 20 else { throw CheckError.failed("Native slider did not stop at the gripper fingertip") }
+        let contact = model.current.joints[1]
+        for _ in 0..<10 {
+            shoulder.doubleValue = -179
+            _ = shoulder.sendAction(shoulder.action, to: shoulder.target)
+        }
+        guard abs(model.current.joints[1] - contact) < 1e-6,
+              abs(shoulder.doubleValue - contact) < 1e-6, notifications == 0
+        else { throw CheckError.failed("Floor stop moved or rebuilt the scene during dragging") }
+        shoulder.doubleValue = contact + 2
+        _ = shoulder.sendAction(shoulder.action, to: shoulder.target)
+        guard abs(model.current.joints[1] - contact - 2) < 1e-8 else { throw CheckError.failed("Floor contact blocked reversal") }
+        changes.cancel()
+        model.setManualTracking(false)
+        model.reset()
+        try await Task.sleep(for: .milliseconds(200))
+        let resetSliders = sliders(content)
+        guard let resetShoulder = resetSliders.first(where: { $0.accessibilityLabel() == "Joint 2 angle in degrees" }),
+              let resetBase = resetSliders.first(where: { $0.accessibilityLabel() == "Joint 1 angle in degrees" }),
+              abs(resetShoulder.doubleValue) < 1e-8, abs(resetBase.doubleValue) < 1e-8
+        else { throw CheckError.failed("Reset left stale native joint control values") }
     }
     private static func sendKey(_ text: String, keyCode: UInt16, shift: Bool = false) {
         let modifiers: NSEvent.ModifierFlags = shift ? [.command, .shift] : [.command]

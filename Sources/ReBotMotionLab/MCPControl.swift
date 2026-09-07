@@ -67,7 +67,9 @@ import RobotControl
     }
     private func boundedPose(_ joints: [Double], grip: Double, name: String, model: AppModel) throws -> Pose {
         guard joints.count == 6, joints.allSatisfy(\.isFinite), joints == model.robot.clampPose(joints), grip.isFinite, (0...90).contains(grip) else { throw ControlError("Pose is outside simulator joint/gripper limits. Read rebot_get_state for limits; no motion was started.") }
-        return Pose(name: name, joints: joints, grip: grip)
+        let pose = Pose(name: name, joints: joints, grip: grip)
+        guard model.floor.isAllowed(pose) else { throw ControlError("Pose intersects the solid base plane, including the gripper fingers. No motion was started.") }
+        return pose
     }
     private func requireStopped(_ model: AppModel) throws {
         guard !model.hasMotion else { throw ControlError("Motion is \(model.manualMoving ? "being adjusted with a slider" : String(describing: model.playback)). Use rebot_playback(action: stop) before sending another pose or editing the sequence.") }
@@ -164,6 +166,7 @@ import RobotControl
             "speed_percent": model.speed, "status": model.status, "page": model.page.rawValue,
             "joint_limits_deg": model.robot.definition.armJoints.enumerated().map { i, joint in ["joint": Double(i + 1), "min": joint.lower / degreesToRadians, "max": joint.upper / degreesToRadians] },
             "gripper_limits_mm": [0, 90],
+            "floor": ["enabled": true, "height_mm": FloorConstraint.height * 1000, "minimum_robot_height_mm": model.floor.minimumHeight(model.current) * 1000],
             "presets": robotPresets.map { ["name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip as Any? ?? NSNull()] as [String: Any] },
             "waypoints": model.waypoints.map { ["id": $0.id.uuidString, "name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip] as [String: Any] },
             "view": ["camera": model.camera, "grid": model.showGrid, "tool_axes": model.showAxes, "trace": model.showTrace]

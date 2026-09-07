@@ -1,5 +1,5 @@
 {
-  "app_version": "1.4",
+  "app_version": "1.5",
   "passed": [
     "MCP handshake, tool/resource discovery, and unavailable-app error",
     "Live native instance identity, folded startup, and private socket permissions",
@@ -8,6 +8,7 @@
     "Preset, six-joint pose, and Cartesian IK commands complete in the native scene",
     "Waypoint add/clear/atomic replace, speed, sequence play/pause/resume/completion",
     "Stop holds pose, camera/overlay controls, and scoped state/reference resources",
+    "MCP rejects gripper-tip floor penetration and exposes the solid-plane state",
     "Malformed IPC recovery and reset to folded startup"
   ]
 }

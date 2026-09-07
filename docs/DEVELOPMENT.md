@@ -1,12 +1,14 @@
 # Development
 
+The repository includes the browser simulator in `web/` and the native Swift package at the root. Run web commands from `web/`; Swift commands below run from the root.
+
 ReBot Motion Lab uses a Swift package with two executables and two shared modules. It requires macOS and Apple's frameworks; it does not build as a Linux or Windows application.
 
 ## Architecture
 
 | Module | Responsibility |
 | --- | --- |
-| `RobotCore` | Model/resource loading, lossless STL indexing, forward/inverse kinematics, manual smoothing, playback, trajectory validation, and reference metadata |
+| `RobotCore` | Model/resource loading, lossless STL indexing, forward/inverse kinematics, solid-floor contact, playback, trajectory validation, and reference metadata |
 | `ReBotMotionLab` | SwiftUI state and controls, AppKit window/keyboard integration, RealityKit transforms and cameras, import/export, native checks |
 | `RobotControl` | MCP lifecycle, tool schemas and validation, same-user Unix socket transport |
 | `ReBotMCP` | Newline-delimited stdio server, IPC client, optional app launch |
@@ -69,3 +71,18 @@ shasum -a 256 "dist/ReBot-Motion-Lab-macOS.zip"
 ```
 
 Attach the ZIP and checksum to the corresponding GitHub release. The app is ad-hoc signed; Developer ID signing and notarization are separate distribution steps and are not configured by this repository.
+
+## Floor geometry
+
+`FloorConstraint` in Swift and `web/lib/floor.ts` use the same generated support vertices. They include every moving link, both fingers, and their tips. The fixed base is mounted to the plane. The plane is at base-frame Z = −1 mm, matching the rendered floor, with a 1 µm numerical contact margin.
+
+Single-joint input solves the first descending plane intersection analytically along the complete rotation. Finger travel is linear. Coordinated moves use conservative height-curvature bounds to certify swept intervals; an exhausted search stops at the last certified pose. Complete playback routes are checked before starting, keeping collision work off the render loop. Neither the tool-center point nor a coarse bounding box substitutes for the mesh shape.
+
+Regenerate support vertices after changing model geometry:
+
+```sh
+npm ci --prefix web
+node scripts/generate-floor-hulls.mjs
+```
+
+This writes identical data into the Swift resource bundle and web module. A convex hull preserves exact support against a plane. The generator retains the model's CERN-OHL-W-2.0 license; original STL assets stay unchanged. Tests independently compare contact heights with the original triangle vertices and exercise each fingertip, reversal, finger opening, and an obstructed sweep whose endpoints are both clear.

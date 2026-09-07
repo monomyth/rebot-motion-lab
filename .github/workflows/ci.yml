@@ -1,4 +1,4 @@
-name: macOS CI
+name: Build and test
 
 on:
   push:
@@ -46,3 +46,32 @@ jobs:
           path: dist/ReBot-Motion-Lab-macOS.zip
           if-no-files-found: error
           retention-days: 14
+
+  web:
+    name: Web / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check types
+        run: npm run typecheck
+      - name: Lint application and tests
+        run: npm run lint
+      - name: Test kinematics and complete gripper floor contact
+        run: npm test
+      - name: Build browser and Worker bundles
+        run: npm run build

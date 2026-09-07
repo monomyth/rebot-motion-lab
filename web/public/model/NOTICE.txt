@@ -1,0 +1,4 @@
+B601-DM robot model: Seeed-Projects/reBot-DevArm
+Source: https://github.com/Seeed-Projects/reBot-DevArm/tree/c9b893aa26c7d89019dd3d0a28ff8f6a7d47ccf9
+License: CERN-OHL-W-2.0, included in LICENSE.txt.
+URDF and STL files retained verbatim. model.json is a mechanical JSON conversion of the URDF for browser loading, created 2026-09-06 and licensed under CERN-OHL-W-2.0. Both formats are included.

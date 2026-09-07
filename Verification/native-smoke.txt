@@ -2,7 +2,8 @@ RealityKit scene initialized
 34 meshes loaded
 53 actuator registers decoded
 Folded startup with closed gripper and synchronized readouts passed
-Manual targets, native slider bindings, frame-driven smoothing, reversals, limits, and Stop/Reset/preset/navigation cancellation passed
+Manual targets, native slider bindings, immediate pose updates, reversals, limits, and Stop/Reset/preset/navigation cancellation passed
+Solid base plane stops both fingertips, clamps native slider values, and permits immediate reversal
 Joint, gripper, IK, playback, pause/resume and completion checks passed
 Trajectory export/import round trip passed
 Native Command-plus/equal, Command-minus, Command-zero and View menu actions passed

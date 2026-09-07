@@ -42,3 +42,7 @@ The median update interval improved from 46–52 ms to about 16.8 ms. Long inter
 To reproduce the measurement, launch the packaged executable with `--performance-check /absolute/output/folder`. The explicit development harness opens its own window, writes `performance.json` or `error.txt`, and exits. The JSON field named `frames_per_second` refers to scene updates per second. Raw before/after samples are in `Verification/`.
 
 The 22 core tests include time carryover, equivalent poses at different frame cadences, pause/resume, invalid time handling, and a check that every source mesh vertex and normal is preserved by indexing. The native smoke check also exercises immediate slider tracking, presets, scene reuse, and text-size keyboard shortcuts.
+
+## Solid base plane
+
+Plane checks use 2,123 precomputed support vertices instead of scanning the full STL triangles on pointer events. Single-joint edits solve first contact analytically; accepted angles return directly to the native slider, including during tracking. Playback paths are validated before motion starts. The render loop retains Cursor's direct pose updates and carries no per-frame floor search.

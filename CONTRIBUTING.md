@@ -4,7 +4,9 @@ Thanks for helping improve ReBot Motion Lab. Start with a focused issue or pull 
 
 ## Set up
 
-Use macOS 14+ and Swift 6 through Xcode or Apple Command Line Tools. Clone the repository and follow the [build instructions](README.md#build-from-source). All model assets are included; there are no third-party Swift packages to resolve.
+For the native app and MCP, use macOS 14+ and Swift 6 through Xcode or Apple Command Line Tools. Clone the repository and follow the [build instructions](README.md#build-from-source). All model assets are included; there are no third-party Swift packages to resolve.
+
+For web work, use Node.js 22.13+ and run `npm ci` from `web/`. Validate with `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`.
 
 ## Report a problem
 

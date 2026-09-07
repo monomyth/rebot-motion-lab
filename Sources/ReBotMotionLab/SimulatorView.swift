@@ -32,7 +32,7 @@ struct SimulatorView: View {
                 Circle().fill(model.playback == .playing || model.manualMoving ? Color.labAccent : Color.secondary).frame(width: 5, height: 5)
                 Text(model.status).lineLimit(2)
                 Spacer(minLength: 12)
-                Text("No collision or dynamics model").foregroundStyle(.tertiary)
+                Text("Solid base plane · No self-collision or dynamics").foregroundStyle(.tertiary)
             }.labFont(.caption).foregroundStyle(.secondary).padding(.horizontal, 22).padding(.bottom, 12)
         }
     }
@@ -145,7 +145,7 @@ private struct JointControlsView: View {
     var body: some View { VStack(alignment: .leading, spacing: 22) { jointControls; Divider(); gripperControls } }
     private var jointControls: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle("Joint control", subtitle: "Angles in degrees · Immediate")
+            sectionTitle("Joint control", subtitle: "Angles in degrees · Solid base plane")
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 ForEach(robotPresets, id: \.name) { preset in
                     Button(preset.name) { model.moveToPose(Pose(name: preset.name, joints: preset.joints, grip: preset.grip ?? model.current.grip)) }
@@ -162,6 +162,7 @@ private struct JointControlsView: View {
                     accessibilityLabel: "Joint \(i + 1) angle in degrees",
                     range: (joint.lower / degreesToRadians)...(joint.upper / degreesToRadians),
                     displayed: model.poseControls.pose.joints[i],
+                    controls: model.poseControls, jointIndex: i,
                     locked: model.controlsLocked,
                     fontScale: fontScale,
                     onChange: { model.setJoint(i, $0) },
@@ -179,6 +180,7 @@ private struct JointControlsView: View {
             accessibilityLabel: "Gripper opening in millimeters",
             range: 0...90,
             displayed: model.poseControls.pose.grip,
+            controls: model.poseControls, jointIndex: nil,
             locked: model.controlsLocked,
             fontScale: fontScale,
             rangeCaption: ("Closed · 0", "Open · 90"),
@@ -197,16 +199,19 @@ private struct JointSliderRow: View {
     let accessibilityLabel: String
     let range: ClosedRange<Double>
     let displayed: Double
+    let controls: PoseControls
+    let jointIndex: Int?
     let locked: Bool
     let fontScale: Double
     var rangeCaption: (String, String)? = nil
-    let onChange: (Double) -> Void
+    let onChange: (Double) -> Double
     let onEditingChanged: (Bool) -> Void
     @State private var value: Double
     @State private var editing = false
-    init(title: String, subtitle: String?, unit: String, fieldLabel: String, accessibilityLabel: String, range: ClosedRange<Double>, displayed: Double, locked: Bool, fontScale: Double, rangeCaption: (String, String)? = nil, onChange: @escaping (Double) -> Void, onEditingChanged: @escaping (Bool) -> Void) {
+    init(title: String, subtitle: String?, unit: String, fieldLabel: String, accessibilityLabel: String, range: ClosedRange<Double>, displayed: Double, controls: PoseControls, jointIndex: Int?, locked: Bool, fontScale: Double, rangeCaption: (String, String)? = nil, onChange: @escaping (Double) -> Double, onEditingChanged: @escaping (Bool) -> Void) {
         self.title = title; self.subtitle = subtitle; self.unit = unit; self.fieldLabel = fieldLabel
         self.accessibilityLabel = accessibilityLabel; self.range = range; self.displayed = displayed
+        self.controls = controls; self.jointIndex = jointIndex
         self.locked = locked; self.fontScale = fontScale; self.rangeCaption = rangeCaption
         self.onChange = onChange; self.onEditingChanged = onEditingChanged
         _value = State(initialValue: displayed)
@@ -221,12 +226,12 @@ private struct JointSliderRow: View {
                     Text(title).labFont(.headline)
                 }
                 Spacer()
-                TextField(fieldLabel, value: Binding(get: { value }, set: { value = $0; onChange($0) }), format: .number.precision(.fractionLength(1)))
+                TextField(fieldLabel, value: Binding(get: { value }, set: { value = onChange($0) }), format: .number.precision(.fractionLength(1)))
                     .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 70 * fontScale)
                     .labFont(.system(.caption, design: .monospaced))
                 Text(unit).labFont(.caption).foregroundStyle(.secondary)
             }
-            LiveSlider(value: value, range: range, enabled: !locked, accessibilityLabel: accessibilityLabel, onChange: { value = $0; onChange($0) }, onEditingChanged: { editing = $0; onEditingChanged($0) })
+            LiveSlider(value: value, range: range, enabled: !locked, accessibilityLabel: accessibilityLabel, onChange: { value = onChange($0); return value }, onEditingChanged: { editing = $0; onEditingChanged($0) })
                 .tint(.labAccent)
                 .frame(minHeight: 20)
             if let rangeCaption {
@@ -239,7 +244,12 @@ private struct JointSliderRow: View {
                 }.labFont(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
             }
         }
-        .onChange(of: displayed) { _, new in if !editing { value = new } }
+        .onReceive(controls.$pose) { pose in
+            let actual = jointIndex.map { pose.joints[$0] } ?? pose.grip
+            // Only a changed, idle row updates. The dragged NSSlider remains in
+            // charge of its own value, and the full controls panel is not observed.
+            if !editing && value != actual { value = actual }
+        }
     }
 }
 
@@ -260,12 +270,18 @@ private struct LiveSlider: NSViewRepresentable {
     var range: ClosedRange<Double>
     var enabled: Bool
     var accessibilityLabel: String
-    var onChange: (Double) -> Void
+    var onChange: (Double) -> Double
     var onEditingChanged: (Bool) -> Void
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator: NSObject {
-        var onChange: ((Double) -> Void)?
-        @objc func changed(_ sender: NSSlider) { onChange?(sender.doubleValue) }
+        var onChange: ((Double) -> Double)?
+        @objc func changed(_ sender: NSSlider) {
+            let requested = sender.doubleValue
+            if let accepted = onChange?(requested), accepted != requested {
+                // Apply a physical stop directly, without rebuilding controls mid-drag.
+                sender.doubleValue = accepted
+            }
+        }
     }
     func makeNSView(context: Context) -> TrackingSlider {
         let slider = TrackingSlider()
