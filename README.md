@@ -41,3 +41,9 @@ node work/kinematics.mjs
 ```
 
 The kinematics checks cover base rotation, finger mimic behavior, pose heights, reachable and unreachable IK targets, joint bounds, solver state preservation, interpolation endpoints, velocity limits, and STL file integrity.
+
+## Actuator reference
+
+The separate `/actuators` page documents all 53 Damiao registers in the pinned MotorBridge register table, every field in the published Seeed B601-DM hardware YAML, motion-command fields, per-joint gains, firmware caveats, and maintenance operations. It is read-only and does not apply settings. A standalone Markdown copy is served at `/B601-DM-actuator-settings.md`.
+
+The reference distinguishes software defaults from actual hardware readback, covers 26 writable and 27 read-only registers, and flags the published `kd = 8` versus encoded `kd <= 5` discrepancy. Firmware support and unknown raw units remain explicitly qualified. Source links are pinned in `lib/actuators.json`.

@@ -46,7 +46,7 @@ export default function Simulator(){
  const canMove=ready&&!error;
  return <main className="app-shell">
   <header className="topbar"><div className="brand"><div className="brand-mark"><Bot/></div><h1>reBot <span>/ Motion Lab</span></h1></div><div className="top-actions"><a href="https://wiki.seeedstudio.com/rebot_arm_b601_dm_web_simulator_developer_guide/" target="_blank" rel="noreferrer">Robot documentation <ArrowUpRight/></a><div className="badge"><i className="dot"/>Simulation only</div></div></header>
-  <div className="workspace-heading"><div><div className="eyebrow">Robot workspace</div><h2>B601-DM</h2></div><div className="toolbar-group">{running&&<button className="secondary stop-button" onClick={()=>{stop();setMessage('Motion stopped at the current pose.')}}><Square/>Stop</button>}<button className="secondary" onClick={reset}><RotateCcw/>Reset pose</button></div></div>
+  <div className="workspace-heading"><div><div className="eyebrow">Robot workspace</div><h2>B601-DM</h2></div><div className="toolbar-group"><a className="secondary actuator-link" href="/actuators" target="_blank" rel="noreferrer">Actuator reference <ArrowUpRight/></a>{running&&<button className="secondary stop-button" onClick={()=>{stop();setMessage('Motion stopped at the current pose.')}}><Square/>Stop</button>}<button className="secondary" onClick={reset}><RotateCcw/>Reset pose</button></div></div>
   <section className="workspace" aria-label="Robot simulator">
    <div className="viewport"><RobotScene options={{q,grip,grid,axes,trace,view,viewKey}} onReady={()=>setReady(true)} onError={s=>{setError(s);stop()}}/>
     <div className="viewport-caption"><strong>{view==='Orbit'?'Perspective':view} view</strong><p>6 axes + parallel gripper</p></div>
