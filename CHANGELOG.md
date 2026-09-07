@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Joint and gripper sliders apply the rendered pose immediately. Interactive dragging no longer uses a 100 ms damped chase or a SwiftUI `Slider` bound to a republishing observable object.
+
 ## 1.4.0 — 2026-09-07
 
 First public source release of ReBot Motion Lab. The macOS application reports version 1.4.

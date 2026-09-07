@@ -61,15 +61,15 @@ Resources: `rebot://state` provides the live state as JSON; `rebot://actuators` 
 ## Motion workflow
 
 1. Read `rebot_get_state` and its joint limits.
-2. If playback is active or paused, or `manual_motion` is true, explicitly stop it before commanding another pose.
-3. Send a motion tool. The result reports `accepted: true` and the current state; **acceptance does not mean the target has been reached**.
-4. Poll state, typically every 0.25–0.5 seconds, until playback becomes `stopped` and `manual_motion` is false, then inspect the final pose. Pause and stop can be issued during playback; Stop also cancels manual movement.
+2. If playback is active or paused, or `manual_motion` is true (a slider is being dragged), explicitly stop it before commanding another pose.
+3. Send a motion tool. The result reports `accepted: true` and the current state; **acceptance does not mean a playback target has been reached**.
+4. Poll state, typically every 0.25–0.5 seconds, until playback becomes `stopped` and `manual_motion` is false, then inspect the final pose. Pause and stop can be issued during playback; Stop also ends slider tracking.
 
-State always reports actual rendered joint angles, gripper opening, and TCP. While a manual slider adjustment is settling, `manual_motion` is true and `manual_target` contains the requested `joints_deg` and `gripper_mm`; otherwise `manual_target` is null. New pose or sequence commands are rejected during manual movement until it settles or is stopped.
+State always reports actual rendered joint angles, gripper opening, and TCP. Interactive sliders apply that pose immediately. While a slider is held, `manual_motion` is true and `manual_target` matches the live pose; otherwise `manual_target` is null. New pose or sequence commands are rejected while a slider is tracking or playback is active.
 
 Example prompts: “Unfold to Ready, then rotate the base to 30 degrees.” “Read the tool position and move it 10 mm upward.” “Save this pose as Pick, close the gripper, and save another waypoint.” “Fold the robot back to its startup position.”
 
-Angles are degrees; positions and gripper opening are millimeters. Invalid types, unknown fields, out-of-range angles, and failed IK return tool errors without starting motion. MCP moves use the simulator's eased interpolation and nominal peak limits of 60°/s and 60 mm/s. Sequence speed changes apply to sequence playback; individual pose commands use nominal speed. Navigating away from the Simulator pauses playback and stops manual adjustments. Keep the simulator view visible while running trajectories.
+Angles are degrees; positions and gripper opening are millimeters. Invalid types, unknown fields, out-of-range angles, and failed IK return tool errors without starting motion. MCP moves use the simulator's eased interpolation and nominal peak limits of 60°/s and 60 mm/s. Sequence speed changes apply to sequence playback; individual pose commands use nominal speed. Navigating away from the Simulator pauses playback and ends slider tracking. Keep the simulator view visible while running trajectories.
 
 Waypoints are session data. Export a trajectory from the app to keep them. `rebot_set_sequence` replaces all waypoints, while reset preserves the sequence and returns the arm immediately to folded startup.
 

@@ -1,14 +1,20 @@
 # Motion performance
 
-## Version 1.4: manual controls
+## Version 1.5: immediate slider pose
 
-Manual joint and gripper controls now update a target instead of applying a pose directly for every input event. RealityKit frame events advance a critically damped filter; its two internal stages retain their state across input changes, so repeated events and reversals do not reset the arm's velocity. The analytic update gives the same response at different frame cadences and stays within the supplied joint/gripper bounds. A fixed target covers 90% of its distance in about 100 ms; the controls show the requested value immediately. This response is separate from the slower, speed-limited preset/MCP/sequence playback.
+Dragging a joint or gripper slider applies the pose to the RealityKit hierarchy on the same input event. The previous critically damped manual filter made the arm trail the thumb by about 50–100 ms and, together with SwiftUI `Slider` rebuilds, dropped interactive frame cadence.
 
-The control target has its own observable object. Actual pose/TCP readouts refresh at most 15 times per second during manual movement, and the full app model publishes only motion start/finish transitions. Stop, Reset, presets, playback, and leaving the simulator discard pending manual movement as appropriate.
+Interactive controls now use a persistent `NSSlider` representable that does not write `doubleValue` back while tracking. `AppModel` does not publish on each tick; numeric readouts still refresh at most 15 times per second. Preset, MCP, and sequence motion stay on the quintic playback engine.
 
-Six additional core tests cover response time and settling, continuous retargeting, irregular frame timing, repeated limit-to-limit reversals, cancellation, and invalid input. The native smoke harness also drives the actual NSSlider action/binding while the real scene clock animates the arm, records intermediate poses and notification counts in `manual-motion.json`, and verifies cancellation and displayed targets.
+Do not restore `ManualMotion` for slider input. See `AGENTS.md`.
 
-The v1.4 release sample processed 100 native slider action/binding updates and recorded 129 scene updates over 2.63 seconds, including 110 intermediate moving poses. The main model published four notifications; actual-position readouts published 31. These are event/update counts from this Mac, not GPU presentation FPS or a guarantee for other hardware. The raw sample is `Verification/manual-motion.json`.
+A packaged-app smoke sample on this Mac processed 100 native slider action/binding updates over 2.14 seconds with 128 scene updates (about 60/s), 0 lagging frames, 0 main-model notifications, and 22 readout notifications. Playback `--performance-check` on the same machine reported 59.1 scene updates/second with and without trace.
+
+## Version 1.4: manual controls (superseded for dragging)
+
+Manual joint and gripper controls previously updated a target instead of applying a pose directly for every input event. RealityKit frame events advanced a critically damped filter so a fixed target covered 90% of its distance in about 100 ms. That path is removed for interactive dragging because it felt like lost FPS. Playback interpolation is unchanged.
+
+The control panel still keeps displayed numeric values off the full app-model publish path. Stop, Reset, presets, playback, and leaving the simulator still discard in-progress slider tracking as appropriate.
 
 ## Version 1.1: renderer and playback
 
@@ -35,4 +41,4 @@ The median update interval improved from 46–52 ms to about 16.8 ms. Long inter
 
 To reproduce the measurement, launch the packaged executable with `--performance-check /absolute/output/folder`. The explicit development harness opens its own window, writes `performance.json` or `error.txt`, and exits. The JSON field named `frames_per_second` refers to scene updates per second. Raw before/after samples are in `Verification/`.
 
-The 16 core tests include time carryover, equivalent poses at different frame cadences, pause/resume, invalid time handling, and a check that every source mesh vertex and normal is preserved by indexing. The native smoke check also exercises smooth presets, scene reuse, and text-size keyboard shortcuts.
+The 22 core tests include time carryover, equivalent poses at different frame cadences, pause/resume, invalid time handling, and a check that every source mesh vertex and normal is preserved by indexing. The native smoke check also exercises immediate slider tracking, presets, scene reuse, and text-size keyboard shortcuts.

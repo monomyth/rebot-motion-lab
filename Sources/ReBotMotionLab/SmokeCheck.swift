@@ -38,21 +38,20 @@ import simd
                 results.append("Folded startup with closed gripper and synchronized readouts passed")
                 model.setJoint(0, 20)
                 model.setGrip(25)
-                guard model.current.joints == start.joints, model.current.grip == 0,
+                guard model.current.joints[0] == 20, model.current.grip == 25,
                       model.poseControls.pose.joints[0] == 20, model.poseControls.pose.grip == 25,
-                      model.manualMoving, !model.controlsLocked else { throw CheckError.failed("Manual target must update without jumping or locking input") }
+                      !model.controlsLocked else { throw CheckError.failed("Manual input must apply immediately without locking playback controls") }
                 model.advance(seconds: 1.0 / 60)
-                guard (0..<20).contains(model.current.joints[0]), model.current.joints[0] > 0,
-                      model.current.grip > 0, model.current.grip < 25,
-                      model.poseControls.pose.joints[0] == 20 else { throw CheckError.failed("Manual input must follow smoothly without moving the slider backward") }
+                guard model.current.joints[0] == 20, model.current.grip == 25,
+                      model.poseControls.pose.joints[0] == 20 else { throw CheckError.failed("Manual input must keep the rendered pose on the requested value") }
                 model.setJoint(0, -20)
-                guard model.poseControls.pose.grip == 25 else { throw CheckError.failed("Retargeting a joint discarded the gripper target") }
+                guard model.poseControls.pose.grip == 25 else { throw CheckError.failed("Retargeting a joint discarded the gripper") }
                 model.advance(seconds: 0.5)
-                guard model.current.joints[0] == -20, model.current.grip == 25, !model.manualMoving else { throw CheckError.failed("Manual controls did not settle") }
+                guard model.current.joints[0] == -20, model.current.grip == 25, !model.manualMoving else { throw CheckError.failed("Manual controls did not keep the requested pose") }
                 guard simd_distance(SIMD3<Double>(viewport.toolPosition()), model.tcp / 1000) < 0.00001 else { throw CheckError.failed("Native joint hierarchy differs from forward kinematics") }
                 try checkManualCancellation(model)
                 try await checkManualFrames(model, viewport: viewport, folder: folder)
-                results.append("Manual targets, native slider bindings, frame-driven smoothing, reversals, limits, and Stop/Reset/preset/navigation cancellation passed")
+                results.append("Manual targets, native slider bindings, immediate pose updates, reversals, limits, and Stop/Reset/preset/navigation cancellation passed")
                 model.useCurrentTarget(); model.solve()
                 guard simd_distance(model.tcp, SIMD3(model.targetX, model.targetY, model.targetZ)) < 2 else { throw CheckError.failed("IK target") }
                 model.setPose(start)
@@ -185,6 +184,7 @@ import simd
     private static func checkManualMCP(_ model: AppModel) throws {
         let control = model.mcpControl
         model.setJoint(0, 45)
+        model.setManualTracking(true)
         let result = try control.handle(["tool": "rebot_get_state", "arguments": [:]])
         guard result["manual_motion"] as? Bool == true,
               (result["manual_target"] as? [String: Any])?["joints_deg"] as? [Double] == model.poseControls.pose.joints,
@@ -198,12 +198,13 @@ import simd
         let stopped = try control.handle(["tool": "rebot_get_state", "arguments": [:]])
         guard !model.manualMoving, stopped["manual_target"] is NSNull else { throw CheckError.failed("MCP stop retained manual target") }
         model.setJoint(0, 45)
+        model.setManualTracking(true)
         control.setEnabled(false, persist: false)
         guard !model.hasMotion else { throw CheckError.failed("Disabling MCP retained manual movement") }
+        model.setPose(.startup)
     }
     private static func checkManualFrames(_ model: AppModel, viewport: RobotViewport, folder: URL) async throws {
-        // Exercise the native slider's action/binding, then allow actual scene
-        // frames to drive the arm. No synthetic advance calls in this check.
+        // Exercise the native slider's action/binding against the live scene clock.
         try await Task.sleep(for: .milliseconds(400))
         func sliders(_ view: NSView) -> [NSSlider] {
             if let slider = view as? NSSlider { return [slider] }
@@ -237,13 +238,14 @@ import simd
         }
         try await Task.sleep(for: .milliseconds(500))
         let duration = ProcessInfo.processInfo.systemUptime - startTime
-        let movingFrames = frames.filter { abs($0["angle"]! - $0["target"]!) > 0.01 }.count
-        guard movingFrames > 8, !model.manualMoving, abs(model.current.joints[0] + 18) < 1e-8,
+        let laggingFrames = frames.filter { abs($0["angle"]! - $0["target"]!) > 0.01 }.count
+        let trackedFrames = frames.filter { abs($0["angle"]! - $0["target"]!) <= 0.01 }.count
+        guard laggingFrames < 8, trackedFrames > 8, !model.manualMoving, abs(model.current.joints[0] + 18) < 1e-8,
               notifications < 12, readouts <= Int(ceil(duration * 15)) + 2,
               simd_distance(SIMD3<Double>(viewport.toolPosition()), model.tcp / 1000) < 0.00001
-        else { throw CheckError.failed("Manual frame response: moving frames=\(movingFrames), main updates=\(notifications), readouts=\(readouts), final angle=\(model.current.joints[0])") }
+        else { throw CheckError.failed("Manual frame response: lagging frames=\(laggingFrames), tracked frames=\(trackedFrames), main updates=\(notifications), readouts=\(readouts), final angle=\(model.current.joints[0])") }
         let report: [String: Any] = ["input_events": inputs, "seconds": duration, "scene_updates": frames.count,
-            "moving_scene_updates": movingFrames, "main_model_notifications": notifications, "readout_notifications": readouts,
+            "lagging_scene_updates": laggingFrames, "tracked_scene_updates": trackedFrames, "main_model_notifications": notifications, "readout_notifications": readouts,
             "final_angle": model.current.joints[0], "samples": frames]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: folder.appendingPathComponent("manual-motion.json"))
     }

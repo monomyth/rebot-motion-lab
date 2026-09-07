@@ -61,6 +61,14 @@ extension Color {
     static let labAccent = Color(red: 0.76, green: 0.91, blue: 0.35)
     static let labPanel = Color(red: 0.10, green: 0.12, blue: 0.11)
 }
+extension NSColor {
+    static let labAccent = NSColor(srgbRed: 0.76, green: 0.91, blue: 0.35, alpha: 1)
+}
+extension View {
+    func labLinkStyle() -> some View {
+        buttonStyle(.plain).foregroundStyle(Color.labAccent)
+    }
+}
 
 struct WorkspaceView: View {
     @ObservedObject var model: AppModel

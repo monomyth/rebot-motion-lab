@@ -187,7 +187,7 @@ struct ReferenceView: View {
             Text("Reviewed \(ref.checked). Pinned source revisions make the reference reproducible; firmware and installed SDK versions may differ.").foregroundStyle(.secondary)
             ForEach(ref.sources.filter { matches($0.title, $0.detail, $0.url) }) { source in
                 referenceCard(title: source.title, value: nil, caption: nil, description: source.detail) {
-                    if let url = URL(string: source.url) { Link(destination: url) { Label("Open source", systemImage: "arrow.up.right") }.labFont(.caption) }
+                    if let url = URL(string: source.url) { Link(destination: url) { Label("Open source", systemImage: "arrow.up.right") }.labLinkStyle().labFont(.caption) }
                 }
             }
         }
@@ -200,7 +200,7 @@ struct ReferenceView: View {
     }
     @ViewBuilder private func links(_ ids: [String]) -> some View {
         ForEach(ref.sources.filter { ids.contains($0.id) }) { s in
-            if let url = URL(string: s.url) { Link(s.title, destination: url) }
+            if let url = URL(string: s.url) { Link(s.title, destination: url).labLinkStyle() }
         }
     }
     private func field(_ name: String, _ value: String) -> some View {
@@ -239,16 +239,16 @@ struct AboutView: View {
                 referenceCard(title: "Robot geometry", value: "34 meshes", caption: "430,912 triangles · Seeed-Projects/reBot-DevArm",
                     description: "Original URDF and colored STL files are bundled verbatim under CERN-OHL-W-2.0. The derived model.json preserves their joint graph. Source revision: \(model.robot.definition.commit).") {
                     HStack {
-                        Link("Original model source", destination: URL(string: "https://github.com/Seeed-Projects/reBot-DevArm/tree/\(model.robot.definition.commit)")!)
-                        Button("Read model license") { NSWorkspace.shared.open(Assets.url("model/LICENSE.txt")) }
-                        Button("Read notice") { NSWorkspace.shared.open(Assets.url("model/NOTICE.txt")) }
+                        Link("Original model source", destination: URL(string: "https://github.com/Seeed-Projects/reBot-DevArm/tree/\(model.robot.definition.commit)")!).labLinkStyle()
+                        Button("Read model license") { NSWorkspace.shared.open(Assets.url("model/LICENSE.txt")) }.labLinkStyle()
+                        Button("Read notice") { NSWorkspace.shared.open(Assets.url("model/NOTICE.txt")) }.labLinkStyle()
                     }.labFont(.caption)
                 }
                 referenceCard(title: "Actuator documentation", value: "53 registers", caption: "Reviewed \(model.reference.checked)",
                     description: "The full reference and pinned sources are bundled locally. Links to source repositories and manufacturer documents open in your browser. Register metadata is derived in part from MotorBridge; its MIT license is included.") {
                     HStack {
-                        Button("Browse reference") { model.page = .actuators }
-                        Button("Read MotorBridge license") { NSWorkspace.shared.open(Assets.url("MOTORBRIDGE-LICENSE.txt")) }
+                        Button("Browse reference") { model.page = .actuators }.labLinkStyle()
+                        Button("Read MotorBridge license") { NSWorkspace.shared.open(Assets.url("MOTORBRIDGE-LICENSE.txt")) }.labLinkStyle()
                     }.labFont(.caption)
                 }
                 Text("Shortcuts: ⌘O import · ⌘S export · ⌘K add pose · ⌘Return play/pause · Esc stop · ⌘R reset · ⌘+/⌘− text size · ⌘0 actual text size").labFont(.callout).foregroundStyle(.secondary)

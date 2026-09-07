@@ -11,7 +11,7 @@ ReBot Motion Lab uses a Swift package with two executables and two shared module
 | `RobotControl` | MCP lifecycle, tool schemas and validation, same-user Unix socket transport |
 | `ReBotMCP` | Newline-delimited stdio server, IPC client, optional app launch |
 
-`AppModel.current` is the actual rendered pose. Manual input updates a separate target; a critically damped filter follows that target from RealityKit frame events. Presets, IK moves, and sequences use the quintic playback engine. Numeric readouts are sampled at 15 Hz. See [motion performance](../PERFORMANCE.md) for the math, scene optimizations, and measured samples.
+`AppModel.current` is the rendered pose. Interactive sliders and numeric fields write that pose immediately through `RobotViewport.applyPose`. `manualMoving` is true only while a slider is tracking, and it is not published through SwiftUI. Presets, IK moves, and sequences use the quintic playback engine. Numeric readouts are sampled at 15 Hz. See [motion performance](../PERFORMANCE.md) for scene optimizations and measured samples.
 
 ## Build and test
 
@@ -35,7 +35,7 @@ REBOT_CONTROL_DIRECTORY="$CONTROL_DIR" \
   --smoke-test "$PWD/work/smoke"
 ```
 
-Inspect `work/smoke/smoke-result.txt` for success or `smoke-error.txt` for a failure. The harness writes native view screenshots and `manual-motion.json`, which records actual scene updates during 100 native slider action/binding changes. It checks target retention, smooth settling, cancellation, TCP agreement, folded startup, IK, playback, font shortcuts, reference navigation, and MCP control state.
+Inspect `work/smoke/smoke-result.txt` for success or `smoke-error.txt` for a failure. The harness writes native view screenshots and `manual-motion.json`, which records actual scene updates during 100 native slider action/binding changes. It checks immediate pose tracking, cancellation, TCP agreement, folded startup, IK, playback, font shortcuts, reference navigation, and MCP control state.
 
 The MCP integration script launches its own isolated app and stdio helper and terminates only those processes:
 

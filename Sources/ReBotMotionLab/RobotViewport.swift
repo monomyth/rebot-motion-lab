@@ -5,13 +5,20 @@ import RobotCore
 import simd
 
 struct RobotScene: NSViewRepresentable {
-    @ObservedObject var model: AppModel
+    var model: AppModel
+    var showGrid: Bool
+    var showAxes: Bool
+    var showTrace: Bool
+    var camera: String
+    var cameraRevision: Int
+    var traceRevision: Int
     func makeNSView(context: Context) -> RobotViewport {
-        if let view = model.viewport { view.setActive(true); view.update(model); return view }
+        if let view = model.viewport { view.setActive(true); view.applyPose(model.current); view.update(model); return view }
         let view = RobotViewport(frame: .zero)
         model.viewport = view; view.owner = model
         do {
             try view.configure(robot: model.robot)
+            view.applyPose(model.current)
             view.setActive(true)
             DispatchQueue.main.async { model.sceneReady = true }
         } catch { DispatchQueue.main.async { model.sceneError = "The bundled 3D model could not load: \(error.localizedDescription)" } }
@@ -159,7 +166,6 @@ struct RobotScene: NSViewRepresentable {
             traceRevision = state.traceRevision
         }
         previousTrace = state.showTrace
-        applyPose(state.current)
         if state.showTrace, lastTracePoint == nil { appendTrace(SIMD3<Float>(robot!.position(state.current.joints))) }
         if cameraRevision != state.cameraRevision {
             cameraRevision = state.cameraRevision; target = [0.06, 0, 0.30]

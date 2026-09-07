@@ -15,7 +15,7 @@ Move six joints and a coupled gripper, plan repeatable trajectories, inspect act
 
 ## Explore the arm
 
-- **Smooth manual motion.** Sliders and numeric fields set a target immediately; the arm follows on each scene frame, including through quick direction changes.
+- **Immediate manual motion.** Sliders and numeric fields apply joint and gripper values on the same event; the 3D arm tracks the control without a smoothing delay.
 - **Fold, unfold, and position.** Start in the folded pose with a closed gripper. Choose Folded, Ready, Reach, or Upright, or solve for a tool position with inverse kinematics.
 - **Build a motion sequence.** Capture named poses, play/pause/resume, adjust speed, and import or export portable trajectory JSON.
 - **Inspect the scene.** Orbit, pan, and zoom; switch camera presets; show the grid, tool axes, and TCP trace.
@@ -46,7 +46,7 @@ Requires **macOS 14 or later** and Metal-capable graphics. The app contains Inte
 | Increase / decrease text | ⌘+ or ⌘= / ⌘− |
 | Reset text size | ⌘0 |
 
-Text size persists from 80% to 160%. The joint controls show **requested targets**; the TCP readout shows the **actual rendered position**. Stop freezes motion. Reset and presets discard a pending manual target. Leaving the simulator pauses playback and stops manual adjustment.
+Text size persists from 80% to 160%. Joint and gripper controls apply the rendered pose immediately. The TCP readout may refresh at 15 Hz during a drag. Stop freezes playback. Reset and presets discard slider tracking. Leaving the simulator pauses playback and ends slider tracking.
 
 The [example trajectory](examples/trajectory.json) uses the same `rebot-motion-lab-v1` format as the original browser prototype: six joint angles in degrees, gripper opening in millimeters, and playback speed from 10–100%. Waypoints stay in memory until exported.
 
@@ -105,6 +105,8 @@ The wrapper handles a known Command Line Tools manifest-interface mismatch withi
 See [Development](docs/DEVELOPMENT.md) for app-level checks, packaging, architecture, and reproducible validation. [PERFORMANCE.md](PERFORMANCE.md) documents the motion implementation and measured local samples.
 
 ## Project layout
+
+ReBot Motion Lab is intended to become the shared repository for the **web simulator, native Swift app, and MCP tools**. The current source tree contains the native app and its MCP server. Bringing the existing web simulator into this repository is planned for a later update; its source is not included yet.
 
 ```text
 Sources/

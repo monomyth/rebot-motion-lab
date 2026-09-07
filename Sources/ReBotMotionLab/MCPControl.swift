@@ -70,7 +70,7 @@ import RobotControl
         return Pose(name: name, joints: joints, grip: grip)
     }
     private func requireStopped(_ model: AppModel) throws {
-        guard !model.hasMotion else { throw ControlError("Motion is \(model.manualMoving ? "following a manual target" : String(describing: model.playback)). Use rebot_playback(action: stop) before sending another pose or editing the sequence.") }
+        guard !model.hasMotion else { throw ControlError("Motion is \(model.manualMoving ? "being adjusted with a slider" : String(describing: model.playback)). Use rebot_playback(action: stop) before sending another pose or editing the sequence.") }
     }
     func handle(_ request: [String: Any]) throws -> [String: Any] {
         guard enabled, let model else { throw ControlError("MCP control is off") }

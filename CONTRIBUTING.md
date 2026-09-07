@@ -15,8 +15,8 @@ Do not include local MCP configuration containing personal filesystem paths, cre
 ## Make a change
 
 - Keep changes focused and explain the user-visible result.
-- Preserve joint order, units, bounds validation, and the separation between actual pose and manual target.
-- Keep animation off SwiftUI's full-view update path; use the existing scene clock.
+- Preserve joint order, units, bounds validation, and playback interpolation. During slider or numeric drag, the rendered pose must follow the control immediately; do not add a manual-motion filter or republish the full app model on every tick.
+- Keep animation off SwiftUI's full-view update path; use `applyPose` for interactive edits and the existing scene clock for playback.
 - Add meaningful tests for motion, kinematics, protocol, or validation behavior that changes. Documentation-only edits do not need a full app build.
 - Preserve third-party asset notices and source attribution. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

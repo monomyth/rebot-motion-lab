@@ -36,7 +36,7 @@ typealias PlaybackState = MotionPlayer.State
         didSet {
             if page != .simulator {
                 if playback == .playing { pause(); status = "Playback paused" }
-                if manualMoving { stop() }
+                if manualMoving { setManualTracking(false) }
             }
         }
     }
@@ -44,7 +44,8 @@ typealias PlaybackState = MotionPlayer.State
     @Published var waypoints = Pose.example
     @Published var speed = 50.0
     @Published private(set) var playback: PlaybackState = .stopped
-    @Published private(set) var manualMoving = false
+    // Not @Published: slider tracking must not rebuild SimulatorView / RobotScene.
+    private(set) var manualMoving = false
     @Published private(set) var activeWaypoint: Int?
     private(set) var progress = 0.0
     @Published var showGrid = true
@@ -70,8 +71,8 @@ typealias PlaybackState = MotionPlayer.State
     // Retain the native scene so reference navigation doesn't reload 34 STL meshes.
     var viewport: RobotViewport?
     private var player = MotionPlayer(current: .startup)
-    private var manual = ManualMotion(current: .startup)
     private var readoutElapsed = 0.0
+    private var lastReadoutTime = 0.0
     private var isSequence = true
     private var completionStatus = "Sequence complete"
     var tcp: SIMD3<Double> { robot.position(current.joints) * 1000 }
@@ -91,43 +92,48 @@ typealias PlaybackState = MotionPlayer.State
     }
     private func publishReadout() {
         telemetry.update(pose: current, tcp: tcp, progress: progress)
-        if !manualMoving { poseControls.update(current) }
-        readoutElapsed = 0
-    }
-    private func adjust(to pose: Pose) {
-        if !manualMoving { manual.reset(to: current) }
-        manual.retarget(to: pose)
-        poseControls.update(pose)
-        if manualMoving != manual.isMoving {
-            manualMoving = manual.isMoving
-            if manualMoving { progress = 0; status = "Adjusting pose" }
-        }
-    }
-    private func cancelManual() {
-        manual.reset(to: current)
-        if manualMoving { manualMoving = false }
         poseControls.update(current)
+        readoutElapsed = 0
+        lastReadoutTime = ProcessInfo.processInfo.systemUptime
+    }
+    func setManualTracking(_ tracking: Bool) {
+        guard manualMoving != tracking else { return }
+        manualMoving = tracking
+        if tracking { progress = 0 }
+        else { publishReadout() }
+    }
+    private func applyInteractive(_ pose: Pose) {
+        current = pose
+        viewport?.applyPose(pose)
+        poseControls.update(pose)
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastReadoutTime >= 1.0 / 15 {
+            telemetry.update(pose: current, tcp: tcp, progress: progress)
+            lastReadoutTime = now
+        }
     }
     func setJoint(_ index: Int, _ value: Double) {
         guard !controlsLocked, value.isFinite, current.joints.indices.contains(index) else { return }
-        var pose = manualMoving ? manual.target : current
-        pose.joints[index] = value; pose.joints = robot.clampPose(pose.joints)
-        adjust(to: pose)
+        var pose = current
+        pose.joints[index] = value
+        pose.joints = robot.clampPose(pose.joints)
+        applyInteractive(pose)
     }
     func setGrip(_ value: Double) {
         guard !controlsLocked, value.isFinite else { return }
-        var pose = manualMoving ? manual.target : current; pose.grip = clamp(value, 0, 90)
-        adjust(to: pose)
+        var pose = current
+        pose.grip = clamp(value, 0, 90)
+        applyInteractive(pose)
     }
     func setPose(_ pose: Pose) {
         guard !controlsLocked else { return }
-        cancelManual()
+        setManualTracking(false)
         apply(Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90)), immediately: true)
         status = "\(pose.name) pose"
     }
     func moveToPose(_ pose: Pose, completion: String? = nil) {
         guard !controlsLocked else { return }
-        cancelManual()
+        setManualTracking(false)
         let bounded = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
         completionStatus = completion ?? "\(pose.name) pose reached"
         if bounded.joints == current.joints && bounded.grip == current.grip { status = completionStatus; publishReadout(); return }
@@ -150,9 +156,7 @@ typealias PlaybackState = MotionPlayer.State
     }
     func addWaypoint() {
         guard !controlsLocked else { return }
-        // Capture the values shown in the controls, including a just-released slider.
-        let pose = manualMoving ? manual.target : current
-        waypoints.append(Pose(name: "Pose \(waypoints.count + 1)", joints: pose.joints, grip: pose.grip))
+        waypoints.append(Pose(name: "Pose \(waypoints.count + 1)", joints: current.joints, grip: current.grip))
         status = "Pose added to sequence"
     }
     private func pause() { player.pause(); playback = .paused; publishReadout() }
@@ -161,23 +165,14 @@ typealias PlaybackState = MotionPlayer.State
         if playback == .playing { pause(); status = "Playback paused"; return }
         if playback == .paused { player.resume(); playback = .playing; status = "Playback resumed"; return }
         guard !waypoints.isEmpty else { return }
-        cancelManual()
+        setManualTracking(false)
         isSequence = true; completionStatus = "Sequence complete"
         player.start(waypoints, from: current); playback = .playing; activeWaypoint = 0; progress = 0
         status = "Playing sequence"; publishReadout()
     }
     // Invoked by RealityKit's frame event, without routing animation through SwiftUI.
     func advance(seconds: Double) {
-        guard seconds.isFinite, seconds > 0 else { return }
-        if manualMoving {
-            manual.advance(seconds: seconds)
-            apply(manual.current, immediately: false)
-            readoutElapsed += seconds
-            if !manual.isMoving { manualMoving = false; status = "Pose reached" }
-            if readoutElapsed >= 1.0 / 15 || !manualMoving { publishReadout() }
-            return
-        }
-        guard playback == .playing else { return }
+        guard seconds.isFinite, seconds > 0, playback == .playing else { return }
         player.advance(seconds: seconds, speed: isSequence ? speed : 100)
         progress = player.progress
         apply(player.current, immediately: false)
@@ -188,7 +183,7 @@ typealias PlaybackState = MotionPlayer.State
         if player.state == .stopped { playback = .stopped; status = completionStatus }
     }
     func stop() {
-        cancelManual()
+        setManualTracking(false)
         player.stop(); playback = .stopped; activeWaypoint = nil; progress = 0
         status = "Motion stopped"; publishReadout()
     }

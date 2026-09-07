@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import RobotCore
 
 struct SimulatorView: View {
@@ -19,7 +20,7 @@ struct SimulatorView: View {
                 viewport.frame(minWidth: 410, maxWidth: .infinity, maxHeight: .infinity)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        JointControlsView(model: model, controls: model.poseControls)
+                        JointControlsView(model: model)
                         Divider()
                         targetControls
                     }.padding(20)
@@ -37,7 +38,7 @@ struct SimulatorView: View {
     }
     private var viewport: some View {
         ZStack(alignment: .topLeading) {
-            RobotScene(model: model)
+            RobotScene(model: model, showGrid: model.showGrid, showAxes: model.showAxes, showTrace: model.showTrace, camera: model.camera, cameraRevision: model.cameraRevision, traceRevision: model.traceRevision)
                 .accessibilityLabel("Interactive 3D B601-DM robot")
                 .accessibilityHint("Drag to orbit, shift-drag to pan, and scroll or pinch to zoom.")
             if let image = model.captureImage { Image(nsImage: image).resizable().allowsHitTesting(false) }
@@ -58,7 +59,7 @@ struct SimulatorView: View {
                     Toggle("Grid", isOn: $model.showGrid)
                     Toggle("Tool axes", isOn: $model.showAxes)
                     Toggle("Trace", isOn: $model.showTrace)
-                    if model.showTrace { Button("Clear") { model.traceRevision += 1 }.buttonStyle(.link) }
+                    if model.showTrace { Button("Clear") { model.traceRevision += 1 }.labLinkStyle() }
                     Spacer()
                 }.toggleStyle(.checkbox).labFont(.caption).padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }.padding(16)
@@ -124,7 +125,7 @@ struct SimulatorView: View {
                 Button { model.waypoints.removeAll { $0.id == pose.id } } label: { Image(systemName: "xmark").labFont(.system(size: 9)) }.buttonStyle(.plain).foregroundStyle(.secondary).help("Remove pose")
             }
             Text("Gripper \(Int(pose.grip)) mm").labFont(.caption2).foregroundStyle(.secondary)
-            Button("Apply pose") { model.moveToPose(pose) }.buttonStyle(.link).labFont(.caption2)
+            Button("Apply pose") { model.moveToPose(pose) }.labLinkStyle().labFont(.caption2)
         }.padding(10).frame(width: 160 * min(fontScale, 1.5))
             .background(model.activeWaypoint == i ? Color.labAccent.opacity(0.13) : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(model.activeWaypoint == i ? Color.labAccent.opacity(0.7) : Color.white.opacity(0.08)))
@@ -139,53 +140,161 @@ func sectionTitle(_ title: String, subtitle: String) -> some View {
 
 private struct JointControlsView: View {
     @ObservedObject var model: AppModel
-    @ObservedObject var controls: PoseControls
     @Environment(\.fontScale) private var fontScale
+    private let jointNames = ["Base", "Shoulder", "Elbow", "Wrist pitch", "Wrist yaw", "Tool roll"]
     var body: some View { VStack(alignment: .leading, spacing: 22) { jointControls; Divider(); gripperControls } }
     private var jointControls: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle("Joint control", subtitle: "Target angles in degrees · Smooth response")
+            sectionTitle("Joint control", subtitle: "Angles in degrees · Immediate")
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 ForEach(robotPresets, id: \.name) { preset in
-                    Button(preset.name) { model.moveToPose(Pose(name: preset.name, joints: preset.joints, grip: preset.grip ?? controls.pose.grip)) }
+                    Button(preset.name) { model.moveToPose(Pose(name: preset.name, joints: preset.joints, grip: preset.grip ?? model.current.grip)) }
                         .frame(maxWidth: .infinity)
                         .help(preset.name == "Folded" ? "Fold to startup position and close the gripper" : "Move smoothly to \(preset.name)")
                 }
             }.controlSize(.small)
             ForEach(Array(model.robot.definition.armJoints.enumerated()), id: \.offset) { i, joint in
-                VStack(spacing: 4) {
-                    HStack {
-                        Text("J\(i + 1)").labFont(.system(size: 12, weight: .bold, design: .monospaced)).foregroundStyle(Color.labAccent)
-                        Text(["Base", "Shoulder", "Elbow", "Wrist pitch", "Wrist yaw", "Tool roll"][i]).labFont(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        TextField("J\(i + 1) angle", value: Binding(get: { controls.pose.joints[i] }, set: { model.setJoint(i, $0) }), format: .number.precision(.fractionLength(1)))
-                            .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 70 * fontScale).labFont(.system(.caption, design: .monospaced))
-                        Text("°").foregroundStyle(.secondary)
-                    }
-                    Slider(value: Binding(get: { controls.pose.joints[i] }, set: { model.setJoint(i, $0) }), in: (joint.lower / degreesToRadians)...(joint.upper / degreesToRadians))
-                        .accessibilityLabel("Joint \(i + 1) angle in degrees")
-                    HStack {
-                        Text(joint.lower / degreesToRadians, format: .number.precision(.fractionLength(1)))
-                        Spacer()
-                        Text(joint.upper / degreesToRadians, format: .number.precision(.fractionLength(1)))
-                    }.labFont(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
-                }
+                JointSliderRow(
+                    title: "J\(i + 1)",
+                    subtitle: jointNames[i],
+                    unit: "°",
+                    fieldLabel: "J\(i + 1) angle",
+                    accessibilityLabel: "Joint \(i + 1) angle in degrees",
+                    range: (joint.lower / degreesToRadians)...(joint.upper / degreesToRadians),
+                    displayed: model.poseControls.pose.joints[i],
+                    locked: model.controlsLocked,
+                    fontScale: fontScale,
+                    onChange: { model.setJoint(i, $0) },
+                    onEditingChanged: { model.setManualTracking($0) }
+                )
             }
         }.disabled(model.controlsLocked)
     }
     private var gripperControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Gripper").labFont(.headline); Spacer()
-                TextField("Gripper opening", value: Binding(get: { controls.pose.grip }, set: { model.setGrip($0) }), format: .number.precision(.fractionLength(1)))
-                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 70 * fontScale)
-                Text("mm").labFont(.caption).foregroundStyle(.secondary)
-            }
-            Slider(value: Binding(get: { controls.pose.grip }, set: { model.setGrip($0) }), in: 0...90).accessibilityLabel("Gripper opening in millimeters")
-            HStack { Text("Closed · 0"); Spacer(); Text("Open · 90") }.labFont(.caption2).foregroundStyle(.secondary)
-        }.disabled(model.controlsLocked)
+        JointSliderRow(
+            title: "Gripper",
+            subtitle: nil,
+            unit: "mm",
+            fieldLabel: "Gripper opening",
+            accessibilityLabel: "Gripper opening in millimeters",
+            range: 0...90,
+            displayed: model.poseControls.pose.grip,
+            locked: model.controlsLocked,
+            fontScale: fontScale,
+            rangeCaption: ("Closed · 0", "Open · 90"),
+            onChange: { model.setGrip($0) },
+            onEditingChanged: { model.setManualTracking($0) }
+        )
+        .disabled(model.controlsLocked)
     }
+}
 
+private struct JointSliderRow: View {
+    let title: String
+    let subtitle: String?
+    let unit: String
+    let fieldLabel: String
+    let accessibilityLabel: String
+    let range: ClosedRange<Double>
+    let displayed: Double
+    let locked: Bool
+    let fontScale: Double
+    var rangeCaption: (String, String)? = nil
+    let onChange: (Double) -> Void
+    let onEditingChanged: (Bool) -> Void
+    @State private var value: Double
+    @State private var editing = false
+    init(title: String, subtitle: String?, unit: String, fieldLabel: String, accessibilityLabel: String, range: ClosedRange<Double>, displayed: Double, locked: Bool, fontScale: Double, rangeCaption: (String, String)? = nil, onChange: @escaping (Double) -> Void, onEditingChanged: @escaping (Bool) -> Void) {
+        self.title = title; self.subtitle = subtitle; self.unit = unit; self.fieldLabel = fieldLabel
+        self.accessibilityLabel = accessibilityLabel; self.range = range; self.displayed = displayed
+        self.locked = locked; self.fontScale = fontScale; self.rangeCaption = rangeCaption
+        self.onChange = onChange; self.onEditingChanged = onEditingChanged
+        _value = State(initialValue: displayed)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: subtitle == nil ? 10 : 4) {
+            HStack {
+                if let subtitle {
+                    Text(title).labFont(.system(size: 12, weight: .bold, design: .monospaced)).foregroundStyle(Color.labAccent)
+                    Text(subtitle).labFont(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(title).labFont(.headline)
+                }
+                Spacer()
+                TextField(fieldLabel, value: Binding(get: { value }, set: { value = $0; onChange($0) }), format: .number.precision(.fractionLength(1)))
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 70 * fontScale)
+                    .labFont(.system(.caption, design: .monospaced))
+                Text(unit).labFont(.caption).foregroundStyle(.secondary)
+            }
+            LiveSlider(value: value, range: range, enabled: !locked, accessibilityLabel: accessibilityLabel, onChange: { value = $0; onChange($0) }, onEditingChanged: { editing = $0; onEditingChanged($0) })
+                .tint(.labAccent)
+                .frame(minHeight: 20)
+            if let rangeCaption {
+                HStack { Text(rangeCaption.0); Spacer(); Text(rangeCaption.1) }.labFont(.caption2).foregroundStyle(.secondary)
+            } else {
+                HStack {
+                    Text(range.lowerBound, format: .number.precision(.fractionLength(1)))
+                    Spacer()
+                    Text(range.upperBound, format: .number.precision(.fractionLength(1)))
+                }.labFont(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
+            }
+        }
+        .onChange(of: displayed) { _, new in if !editing { value = new } }
+    }
+}
+
+private final class TrackingSlider: NSSlider {
+    var onEditingChanged: ((Bool) -> Void)?
+    private(set) var isTracking = false
+    override func mouseDown(with event: NSEvent) {
+        isTracking = true
+        onEditingChanged?(true)
+        super.mouseDown(with: event)
+        isTracking = false
+        onEditingChanged?(false)
+    }
+}
+
+private struct LiveSlider: NSViewRepresentable {
+    var value: Double
+    var range: ClosedRange<Double>
+    var enabled: Bool
+    var accessibilityLabel: String
+    var onChange: (Double) -> Void
+    var onEditingChanged: (Bool) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator: NSObject {
+        var onChange: ((Double) -> Void)?
+        @objc func changed(_ sender: NSSlider) { onChange?(sender.doubleValue) }
+    }
+    func makeNSView(context: Context) -> TrackingSlider {
+        let slider = TrackingSlider()
+        slider.minValue = range.lowerBound
+        slider.maxValue = range.upperBound
+        slider.doubleValue = value
+        slider.isContinuous = true
+        slider.target = context.coordinator
+        slider.action = #selector(Coordinator.changed)
+        slider.setAccessibilityLabel(accessibilityLabel)
+        slider.onEditingChanged = onEditingChanged
+        context.coordinator.onChange = onChange
+        applyColors(slider)
+        return slider
+    }
+    func updateNSView(_ slider: TrackingSlider, context: Context) {
+        context.coordinator.onChange = onChange
+        slider.onEditingChanged = onEditingChanged
+        slider.minValue = range.lowerBound
+        slider.maxValue = range.upperBound
+        slider.isEnabled = enabled
+        slider.setAccessibilityLabel(accessibilityLabel)
+        applyColors(slider)
+        if !slider.isTracking { slider.doubleValue = value }
+    }
+    private func applyColors(_ slider: TrackingSlider) {
+        slider.appearance = NSAppearance(named: .darkAqua)
+        slider.trackFillColor = .labAccent
+    }
 }
 
 private struct ToolReadout: View {
