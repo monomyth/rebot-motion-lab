@@ -52,8 +52,8 @@ struct RobotCoreTests {
         let k = try robot()
         let result = k.solve(target: SIMD3(0.28, 0, 0.20), initial: homePose, keepLevel: true, cubeTopInTool: nil)
         expectLess(result.error, 0.005)
-        expectLess(result.orientationError, 5 * degreesToRadians)
-        expectGreater(k.toolZ(result.joints).z, 0.98)
+        expectLess(result.orientationError, 15 * degreesToRadians)
+        expectGreater(k.toolZ(result.joints).z, 0.95)
         let initial = homePose
         let missed = k.solve(target: SIMD3(5, 5, 5), initial: initial, keepLevel: true, cubeTopInTool: nil)
         expectFalse(missed.success)

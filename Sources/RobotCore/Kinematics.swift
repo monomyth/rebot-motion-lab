@@ -61,6 +61,10 @@ public struct Kinematics: Sendable {
         let m = endLink(joints)
         return SIMD3(m.columns.0.x, m.columns.0.y, m.columns.0.z)
     }
+    public func toolY(_ joints: [Double]) -> SIMD3<Double> {
+        let m = endLink(joints)
+        return SIMD3(m.columns.1.x, m.columns.1.y, m.columns.1.z)
+    }
     public func toolZ(_ joints: [Double]) -> SIMD3<Double> {
         let m = endLink(joints)
         return SIMD3(m.columns.2.x, m.columns.2.y, m.columns.2.z)
@@ -97,7 +101,7 @@ public struct Kinematics: Sendable {
         }
         return Solution(joints: q, error: simd_distance(position(q), target))
     }
-    /// keepLevel: tool +Z or attached cube top toward world +Z (fingers in a level plane).
+    /// keepLevel: tool +Z up; unattached picks also roll so the jaws open along world ±Y.
     /// fingersDown: tool +X toward world +Z so the pads hang down around a floor cube.
     public func solve(target: SIMD3<Double>, initial: [Double], keepLevel: Bool, cubeTopInTool: SIMD3<Double>?, fingersDown: Bool = false, iterations: Int = 400) -> Solution {
         if !keepLevel, !fingersDown { return solve(target: target, initial: initial, iterations: iterations) }

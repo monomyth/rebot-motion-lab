@@ -49,7 +49,7 @@ public struct FloorConstraint: Sendable {
         return true
     }
 
-    /// Positive when a non-finger hull point is inside an unattached cube. Fingers are limited by grip, not hulls.
+    /// Positive when a non-finger hull point or a finger pad sits inside an unattached cube.
     public func cubePenetration(_ pose: Pose, cube: CubeState?) -> Double {
         guard let cube, cube.present, !cube.attached else { return 0 }
         let transforms = robot.transforms(pose.joints, grip: pose.grip)
@@ -71,7 +71,7 @@ public struct FloorConstraint: Sendable {
                 }
             }
         }
-        return depth
+        return max(depth, Grasp.padPenetration(cube: cube, leftFinger: transforms["finger_left_link"]!, rightFinger: transforms["finger_right_link"]!))
     }
 
     /// Returns the first contact along the requested motion, even when its endpoint is clear.

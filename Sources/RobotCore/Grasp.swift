@@ -11,6 +11,10 @@ public enum Grasp {
     public static let jawXMax = -0.008
     public static let jawPad = 0.014
     public static let levelLimit = cos(5 * degreesToRadians)
+    public static let leftPadMin = SIMD3(-0.065, 0.0005, -0.020)
+    public static let leftPadMax = SIMD3(-0.002, 0.031, 0.020)
+    public static let rightPadMin = SIMD3(-0.065, -0.031, -0.020)
+    public static let rightPadMax = SIMD3(-0.002, -0.0005, 0.020)
 
     public static func cubeWidthMM(_ cube: CubeState) -> Double { cube.size.y * 1000 }
     public static func attachOpeningMM(_ cube: CubeState) -> Double { cubeWidthMM(cube) + 2 }
@@ -62,6 +66,13 @@ public enum Grasp {
         }
         let closing = pose.grip < previousGrip - 1e-9
         if closing, pose.grip <= attachOpeningMM(cube), pose.grip >= minimumOpeningMM(cube) - 8, inJaws(cube: cube, endLink: endLink) {
+            // Sit cube faces against the pads so a 40 mm cube is not pinched on its diagonal.
+            let opening = SIMD3(endLink.columns.1.x, endLink.columns.1.y, 0)
+            if simd_length(opening) > 1e-6 {
+                let yaw = atan2(opening.y, opening.x) - .pi / 2
+                cube.rotation = simd_quatd(angle: yaw, axis: SIMD3(0, 0, 1))
+                cube.restOnFloor()
+            }
             cube.attachLocal = endLink.inverse * cube.worldMatrix
             cube.attached = true
             cube.verticalVelocity = 0
@@ -77,5 +88,32 @@ public enum Grasp {
     public static func isLevel(toolZ: SIMD3<Double>, cubeTop: SIMD3<Double>?) -> Bool {
         if let top = cubeTop { return simd_dot(simd_normalize(top), SIMD3(0, 0, 1)) >= levelLimit }
         return simd_dot(simd_normalize(toolZ), SIMD3(0, 0, 1)) >= levelLimit
+    }
+
+    /// How far a finger-pad box sits inside the cube. Zero if the inner faces only touch.
+    public static func padPenetration(cube: CubeState, leftFinger: simd_double4x4, rightFinger: simd_double4x4) -> Double {
+        Swift.max(
+            boxPenetration(cube: cube, frame: leftFinger, lo: leftPadMin, hi: leftPadMax),
+            boxPenetration(cube: cube, frame: rightFinger, lo: rightPadMin, hi: rightPadMax)
+        )
+    }
+
+    private static func boxPenetration(cube: CubeState, frame: simd_double4x4, lo: SIMD3<Double>, hi: SIMD3<Double>) -> Double {
+        let inverse = cube.rotation.inverse
+        let half = cube.size / 2
+        var depth = 0.0
+        for x in [lo.x, hi.x] {
+            for y in [lo.y, hi.y] {
+                for z in [lo.z, hi.z] {
+                    let p = frame * SIMD4(x, y, z, 1)
+                    let local = inverse.act(SIMD3(p.x, p.y, p.z) - cube.center)
+                    let dx = abs(local.x) - half.x, dy = abs(local.y) - half.y, dz = abs(local.z) - half.z
+                    if dx <= 0, dy <= 0, dz <= 0 {
+                        depth = Swift.max(depth, Swift.min(-dx, Swift.min(-dy, -dz)))
+                    }
+                }
+            }
+        }
+        return depth
     }
 }

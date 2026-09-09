@@ -196,19 +196,13 @@ struct RobotScene: NSViewRepresentable {
         guard let cubeEntity else { return }
         cubeEntity.isEnabled = cube.present
         cubeEntity.scale = SIMD3<Float>(cube.size / 0.04)
-        let pose = cube.worldMatrix
+        cubeEntity.removeFromParent()
         if cube.attached, let end = linkEntities["end_link"] {
-            if cubeEntity.parent !== end {
-                cubeEntity.removeFromParent()
-                end.addChild(cubeEntity)
-            }
+            end.addChild(cubeEntity)
             cubeEntity.transform = Transform(matrix: floatMatrix(cube.attachLocal))
         } else {
-            if cubeEntity.parent !== self.world {
-                cubeEntity.removeFromParent()
-                self.world.addChild(cubeEntity)
-            }
-            cubeEntity.transform = Transform(matrix: floatMatrix(pose))
+            self.world.addChild(cubeEntity)
+            cubeEntity.transform = Transform(matrix: floatMatrix(cube.worldMatrix))
         }
     }
     func captureJPEG(camera: String?, apply: Bool, width: Int, height: Int) -> (data: Data, cubeInView: Bool, tcpInView: Bool)? {

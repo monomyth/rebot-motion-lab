@@ -118,7 +118,16 @@ import simd
             if name == "rebot_move_joints" { joints = doubles(args["joints_deg"]!); grip = args["gripper_mm"] as? Double ?? grip }
             if name == "rebot_set_joint" { joints[(args["joint"] as! Int) - 1] = args["angle_deg"] as! Double }
             if name == "rebot_set_gripper" { grip = args["opening_mm"] as! Double }
-            let pose = try boundedPose(joints, grip: grip, name: "MCP target", model: model)
+            let pose: Pose
+            do {
+                pose = try boundedPose(joints, grip: grip, name: "MCP target", model: model)
+            } catch {
+                guard name == "rebot_set_gripper" else { throw error }
+                let requested = Pose(name: "MCP target", joints: joints, grip: clamp(grip, 0, 90))
+                let stopped = model.floor.limited(from: model.current, to: requested, cube: model.cube)
+                guard stopped.grip != model.current.grip else { throw error }
+                pose = stopped
+            }
             showSimulator(model); model.moveToPose(pose)
         case "rebot_move_to_position":
             try requireScripted(model)
