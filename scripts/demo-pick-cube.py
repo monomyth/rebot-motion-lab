@@ -131,11 +131,23 @@ def main():
         client.call("rebot_set_gripper", {"opening_mm": 60})
         dropped = client.wait_stopped()
         log.append({"step": "release", "attached": cube(dropped)["attached"], "cube": cube(dropped), "tcp_mm": dropped["tcp_mm"]})
+        landed = dropped
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            landed = client.call("rebot_get_state")
+            c = cube(landed)
+            if not c["attached"] and not c.get("falling") and c["center_mm"]["z"] < 25:
+                break
+            time.sleep(0.05)
+        log.append({"step": "landed", "cube": cube(landed), "tcp_mm": landed["tcp_mm"]})
         print(json.dumps({"ok": True, "log": log}, indent=2))
         if cube(dropped)["attached"]:
             raise SystemExit("cube still attached after release")
         if not cube(held)["attached"] or not cube(still)["attached"]:
             raise SystemExit("cube was not held for 5 seconds")
+        ground = cube(landed)["center_mm"]["z"]
+        if cube(landed)["attached"] or cube(landed).get("falling") or ground > 25:
+            raise SystemExit(f"cube did not land on the plane: {cube(landed)}")
     finally:
         client.close()
 

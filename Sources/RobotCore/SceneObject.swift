@@ -12,6 +12,8 @@ public struct CubeState: Equatable, Sendable {
     public var spawnCenter: SIMD3<Double>
     public var spawnSize: SIMD3<Double>
     public var spawnRotation: simd_quatd
+    public var verticalVelocity: Double
+    public static let gravity = 9.81
 
     public static let defaultSize = SIMD3<Double>(repeating: 0.04)
     public static var defaultCenter: SIMD3<Double> {
@@ -23,7 +25,8 @@ public struct CubeState: Equatable, Sendable {
         return CubeState(
             present: true, attached: false, size: defaultSize, center: center,
             rotation: simd_quatd(ix: 0, iy: 0, iz: 0, r: 1), attachLocal: matrix_identity_double4x4,
-            spawnCenter: center, spawnSize: defaultSize, spawnRotation: simd_quatd(ix: 0, iy: 0, iz: 0, r: 1)
+            spawnCenter: center, spawnSize: defaultSize, spawnRotation: simd_quatd(ix: 0, iy: 0, iz: 0, r: 1),
+            verticalVelocity: 0
         )
     }
 
@@ -55,9 +58,40 @@ public struct CubeState: Equatable, Sendable {
 
     public var minimumHeight: Double { corners.map(\.z).min() ?? center.z - size.z / 2 }
 
+    public var isFalling: Bool { present && !attached && minimumHeight > FloorConstraint.height + 1e-6 }
+
     public mutating func restOnFloor() {
         let lift = FloorConstraint.height - minimumHeight
         if lift > 0 { center.z += lift }
+        verticalVelocity = 0
+    }
+
+    /// Euler integration of −gẑ for an unattached cube. Substeps so large frames do not tunnel the plane.
+    @discardableResult
+    public mutating func integrateGravity(dt: Double) -> Bool {
+        guard present, !attached, dt.isFinite, dt > 0 else { return false }
+        var remaining = min(dt, 0.05)
+        var changed = false
+        let step = 1.0 / 240
+        while remaining > 1e-9 {
+            let h = min(step, remaining)
+            remaining -= h
+            if minimumHeight <= FloorConstraint.height + 1e-9 {
+                if verticalVelocity != 0 || minimumHeight < FloorConstraint.height - 1e-12 {
+                    restOnFloor()
+                    changed = true
+                }
+                break
+            }
+            verticalVelocity -= Self.gravity * h
+            center.z += verticalVelocity * h
+            changed = true
+            if minimumHeight <= FloorConstraint.height {
+                restOnFloor()
+                break
+            }
+        }
+        return changed
     }
 
     public mutating func restoreSpawn() {
@@ -67,6 +101,7 @@ public struct CubeState: Equatable, Sendable {
         center = spawnCenter
         rotation = spawnRotation
         attachLocal = matrix_identity_double4x4
+        verticalVelocity = 0
         restOnFloor()
     }
 
@@ -89,6 +124,7 @@ public struct CubeState: Equatable, Sendable {
         }
         next.attached = false
         next.attachLocal = matrix_identity_double4x4
+        next.verticalVelocity = 0
         if next.minimumHeight < FloorConstraint.height - 1e-9 {
             throw CubeError.invalid("Cube would intersect the solid base plane. No change was applied.")
         }

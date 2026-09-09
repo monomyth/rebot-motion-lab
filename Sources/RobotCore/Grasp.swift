@@ -34,9 +34,10 @@ public enum Grasp {
                 cube = aligned(cube, endLink: endLink)
                 cube.attached = false
                 cube.attachLocal = matrix_identity_double4x4
-                cube.restOnFloor()
+                cube.verticalVelocity = 0
             } else {
                 cube = aligned(cube, endLink: endLink)
+                cube.verticalVelocity = 0
             }
             return
         }
@@ -44,6 +45,7 @@ public enum Grasp {
         if closing, pose.grip <= closeMM, aabbContains(cubeCenter: cube.center, cubeSize: cube.size, endLink: endLink) {
             cube.attachLocal = endLink.inverse * cube.worldMatrix
             cube.attached = true
+            cube.verticalVelocity = 0
             cube = aligned(cube, endLink: endLink)
         }
     }

@@ -298,10 +298,11 @@ import simd
             "waypoints": model.waypoints.map { ["id": $0.id.uuidString, "name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip] as [String: Any] },
             "view": ["camera": model.camera, "grid": model.showGrid, "tool_axes": model.showAxes, "trace": model.showTrace],
             "objects": ["cube": [
-                "present": cube.present, "attached": cube.attached,
+                "present": cube.present, "attached": cube.attached, "falling": cube.isFalling,
                 "size_mm": cube.size.x * 1000,
                 "center_mm": ["x": cube.center.x * 1000, "y": cube.center.y * 1000, "z": cube.center.z * 1000],
                 "yaw_deg": cube.yaw * 180 / .pi,
+                "vertical_velocity_mm_s": cube.verticalVelocity * 1000,
                 "top_normal": ["x": top.x, "y": top.y, "z": top.z]
             ] as [String: Any]]
         ]

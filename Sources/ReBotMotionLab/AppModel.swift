@@ -220,17 +220,30 @@ enum ControlMode: String {
     }
     // Invoked by RealityKit's frame event, without routing animation through SwiftUI.
     func advance(seconds: Double) {
-        guard seconds.isFinite, seconds > 0, playback == .playing else { return }
-        player.advance(seconds: seconds, speed: isSequence ? speed : 100)
-        progress = player.progress
-        // The complete route was checked before starting, including skipped waypoint
-        // boundaries after a long frame. Rendering remains independent of collision work.
-        apply(player.current, immediately: false)
-        let index = isSequence ? player.index : nil
-        if activeWaypoint != index { activeWaypoint = index }
-        readoutElapsed += max(0, seconds)
-        if readoutElapsed >= 1.0 / 15 || player.state == .stopped { publishReadout() }
-        if player.state == .stopped { playback = .stopped; status = completionStatus }
+        guard seconds.isFinite, seconds > 0 else { return }
+        if playback == .playing {
+            player.advance(seconds: seconds, speed: isSequence ? speed : 100)
+            progress = player.progress
+            // The complete route was checked before starting, including skipped waypoint
+            // boundaries after a long frame. Rendering remains independent of collision work.
+            apply(player.current, immediately: false)
+            let index = isSequence ? player.index : nil
+            if activeWaypoint != index { activeWaypoint = index }
+            readoutElapsed += max(0, seconds)
+            if readoutElapsed >= 1.0 / 15 || player.state == .stopped { publishReadout() }
+            if player.state == .stopped { playback = .stopped; status = completionStatus }
+        }
+        tickCubeGravity(seconds)
+    }
+    private func tickCubeGravity(_ dt: Double) {
+        if cube.attached {
+            cube.verticalVelocity = 0
+            return
+        }
+        guard cube.integrateGravity(dt: dt) else { return }
+        viewport?.syncCube(cube)
+        readoutElapsed += max(0, dt)
+        if readoutElapsed >= 1.0 / 15 { publishReadout() }
     }
     func stop() {
         setManualTracking(false)
