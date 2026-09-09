@@ -1,4 +1,6 @@
-# ReBot Motion Lab
+# ReBot Motion Lab Codex
+
+**This feature branch adds a native cube pickup environment for external MaleCNS controllers. See [the experiment guide](docs/FLY_EXPERIMENT.md) for setup, physics, cameras, control sessions, recording, and verification. The neural model and its training remain external.**
 
 **Explore the ReBot B601-DM in a native macOS app or your browser, with MCP control for the native simulator.**
 
@@ -31,13 +33,13 @@ The repository root is the Swift package root. Open `Package.swift` in Xcode or 
 - **Build a motion sequence.** Capture named poses, play/pause/resume, adjust speed, and import or export portable trajectory JSON.
 - **Inspect the scene.** Orbit, pan, and zoom; switch camera presets; show the grid, tool axes, and TCP trace.
 - **Keep the reference beside the simulator.** Browse 53 documented actuator registers, seven actuator assignments, SDK defaults, command fields, operating modes, and source links.
-- **Control it through MCP.** A bundled native server exposes 12 tools and two resources to compatible clients. No Python or Node runtime is needed to use it.
+- **Control it through MCP.** A bundled native server exposes 23 tools and two resources to compatible clients. No Python or Node runtime is needed to use it.
 
-This is a **kinematic simulator**. It enforces contact with the base plane, including the gripper fingers. It does not connect to robot hardware or simulate self-collisions, other obstacles, payloads, forces, torque, thermal behavior, or actuator dynamics. Published motor settings are reference data; they do not configure the simulator.
+Standard mode is a **kinematic simulator** with floor stops. The optional native cube experiment adds gravity, rigid cube contacts, frictional grasping, orientation-aware control, and evaluation. Robot self-collisions, actuator dynamics, torque/thermal behaviour, and hardware control remain outside scope. Published motor settings are reference data. Standard mode supports macOS 14+; cube physics requires macOS 15+.
 
 ## Get started
 
-1. [Download the latest macOS release](https://github.com/monomyth/rebot-motion-lab/releases/latest), unzip it, and move **ReBot Motion Lab.app** to **Applications**. You can also [build from source](#build-from-source).
+1. [Download the latest macOS release](https://github.com/monomyth/rebot-motion-lab/releases/latest), unzip it, and move **ReBot Motion Lab Codex.app** to **Applications**. You can also [build from source](#build-from-source).
 2. Open the app and select **Ready** to unfold the arm.
 3. Adjust a joint or the gripper, then choose **Add pose** to save the displayed control values.
 4. Add more poses and press **Play**. Export the sequence to keep it between sessions.
@@ -80,8 +82,8 @@ With the app in Applications, a standard stdio configuration is:
 ```json
 {
   "mcpServers": {
-    "rebot": {
-      "command": "/Applications/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP",
+    "rebot-motion-lab-codex": {
+      "command": "/Applications/ReBot Motion Lab Codex.app/Contents/MacOS/ReBotMCP",
       "args": []
     }
   }
@@ -110,7 +112,7 @@ bash scripts/swift-local.sh test
 
 # Build a universal macOS application.
 bash scripts/build-app.sh ./dist
-open "dist/ReBot Motion Lab.app"
+open "dist/ReBot Motion Lab Codex.app"
 ```
 
 In Xcode, open `Package.swift`, choose **ReBotMotionLab**, and run on **My Mac**. This project targets macOS; an iOS app is not included.

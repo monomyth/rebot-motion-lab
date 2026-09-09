@@ -36,6 +36,7 @@ typealias PlaybackState = MotionPlayer.State
     @Published var page: WorkspacePage = .simulator {
         didSet {
             if page != .simulator {
+                experiment.pause()
                 if playback == .playing { pause(); status = "Playback paused" }
                 if manualMoving { setManualTracking(false) }
             }
@@ -45,6 +46,7 @@ typealias PlaybackState = MotionPlayer.State
     @Published var waypoints = Pose.example
     @Published var speed = 50.0
     @Published private(set) var playback: PlaybackState = .stopped
+    @Published private(set) var externalControlLocked = false
     // Not @Published: slider tracking must not rebuild SimulatorView / RobotScene.
     private(set) var manualMoving = false
     @Published private(set) var activeWaypoint: Int?
@@ -69,6 +71,7 @@ typealias PlaybackState = MotionPlayer.State
     let telemetry = MotionReadout()
     let poseControls = PoseControls()
     let mcpControl = MCPControl()
+    lazy var experiment = ExperimentCoordinator(model: self)
     // Retain the native scene so reference navigation doesn't reload 34 STL meshes.
     var viewport: RobotViewport?
     private var player = MotionPlayer(current: .startup)
@@ -77,7 +80,7 @@ typealias PlaybackState = MotionPlayer.State
     private var isSequence = true
     private var completionStatus = "Sequence complete"
     var tcp: SIMD3<Double> { robot.position(current.joints) * 1000 }
-    var controlsLocked: Bool { playback != .stopped }
+    var controlsLocked: Bool { playback != .stopped || externalControlLocked }
     var hasMotion: Bool { controlsLocked || manualMoving }
 
     init() throws {
@@ -88,8 +91,8 @@ typealias PlaybackState = MotionPlayer.State
         mcpControl.attach(self)
     }
     private func apply(_ pose: Pose, immediately: Bool) {
-        current = pose
-        viewport?.applyPose(pose)
+        current = experiment.limit(pose)
+        viewport?.applyPose(current)
         if immediately { publishReadout() }
     }
     private func publishReadout() {
@@ -105,9 +108,9 @@ typealias PlaybackState = MotionPlayer.State
         else { publishReadout() }
     }
     private func applyInteractive(_ pose: Pose) {
-        current = pose
-        viewport?.applyPose(pose)
-        poseControls.update(pose)
+        current = experiment.limit(pose)
+        viewport?.applyPose(current)
+        poseControls.update(current)
         let now = ProcessInfo.processInfo.systemUptime
         if now - lastReadoutTime >= 1.0 / 15 {
             telemetry.update(pose: current, tcp: tcp, progress: progress)
@@ -151,6 +154,7 @@ typealias PlaybackState = MotionPlayer.State
         status = "Moving to \(pose.name)"; publishReadout()
     }
     func reset() {
+        if experiment.enabled { do { try experiment.reset() } catch { self.error=error.localizedDescription }; return }
         stop(); apply(.startup, immediately: true)
         resetCamera("Orbit"); traceRevision += 1; useCurrentTarget(); status = "Reset to folded startup position"
     }
@@ -170,6 +174,7 @@ typealias PlaybackState = MotionPlayer.State
     }
     private func pause() { player.pause(); playback = .paused; publishReadout() }
     func playPause() {
+        guard !externalControlLocked else { return }
         page = .simulator
         if playback == .playing { pause(); status = "Playback paused"; return }
         if playback == .paused { player.resume(); playback = .playing; status = "Playback resumed"; return }
@@ -204,6 +209,17 @@ typealias PlaybackState = MotionPlayer.State
         if player.state == .stopped { playback = .stopped; status = completionStatus }
     }
     func stop() {
+        experiment.stopArm(reason: "stop")
+        stopPlaybackOnly()
+    }
+    func applyExperimentPose(_ pose: Pose) {
+        current=pose; viewport?.applyPose(pose)
+        if ProcessInfo.processInfo.systemUptime-lastReadoutTime >= 1.0/15 { publishReadout() }
+    }
+    func setExternalControlLock(_ locked: Bool) {
+        if externalControlLocked != locked { externalControlLocked=locked }
+    }
+    func stopPlaybackOnly() {
         setManualTracking(false)
         player.stop(); playback = .stopped; activeWaypoint = nil; progress = 0
         status = "Motion stopped"; publishReadout()

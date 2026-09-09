@@ -28,7 +28,7 @@ import RobotControl
             try server.start { [weak self] request, reply in
                 Task { @MainActor in
                     guard let self else { reply(["ok": false, "error": "Simulator closed"]); return }
-                    do { reply(["ok": true, "data": try self.handle(request)]) }
+                    do { reply(["ok": true, "data": try await self.handleAsync(request)]) }
                     catch {
                         self.record("Rejected: \(error.localizedDescription)")
                         reply(["ok": false, "error": error.localizedDescription])
@@ -50,9 +50,9 @@ import RobotControl
             : executable
         if codex {
             let path = String(decoding: (try? JSONSerialization.data(withJSONObject: command, options: [.fragmentsAllowed, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
-            return "[mcp_servers.rebot-motion-lab]\ncommand = \(path)\nargs = []"
+            return "[mcp_servers.rebot-motion-lab-codex]\ncommand = \(path)\nargs = []"
         }
-        let json: [String: Any] = ["mcpServers": ["rebot": ["command": command, "args": [String]()]]]
+        let json: [String: Any] = ["mcpServers": ["rebot-motion-lab-codex": ["command": command, "args": [String]()]]]
         return String(decoding: (try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
     }
     func copyConfiguration(codex: Bool) {
@@ -79,6 +79,14 @@ import RobotControl
     private func requireStopped(_ model: AppModel) throws {
         guard !model.hasMotion else { throw ControlError("Motion is \(model.manualMoving ? "being adjusted with a slider" : String(describing: model.playback)). Use rebot_playback(action: stop) before sending another pose or editing the sequence.") }
     }
+    private func handleAsync(_ request: [String: Any]) async throws -> [String: Any] {
+        if request["tool"] as? String == "rebot_get_observation", let args=request["arguments"] as? [String:Any], args["images"] as? Bool == true {
+            guard enabled, let model else { throw ControlError("MCP control is off") }
+            try ControlCatalog.validate(args, for: "rebot_get_observation")
+            return try await model.experiment.captureObservation()
+        }
+        return try handle(request)
+    }
     func handle(_ request: [String: Any]) throws -> [String: Any] {
         guard enabled, let model else { throw ControlError("MCP control is off") }
         guard let name = request["tool"] as? String, let args = request["arguments"] as? [String: Any] else { throw ControlError("Invalid control request") }
@@ -89,6 +97,11 @@ import RobotControl
         try ControlCatalog.validate(args, for: name)
         if name == "rebot_get_state" { return state(model) }
         guard model.sceneReady, model.sceneError == nil else { throw ControlError("The 3D scene is still loading or unavailable. Read state and retry when scene_ready is true.") }
+        if ControlCatalog.experimentToolNames.contains(name) {
+            let result=try model.experiment.handle(name,args)
+            if !["rebot_get_task","rebot_get_observation","rebot_get_evaluation","rebot_solve_pose"].contains(name) { revision += 1; record(name) }
+            return result
+        }
         var extra: [String: Any] = [:]
         switch name {
         case "rebot_move_joints", "rebot_set_joint", "rebot_set_gripper":
@@ -164,6 +177,8 @@ import RobotControl
             "mcp_enabled": enabled, "command_revision": revision,
             "joints_deg": model.current.joints, "gripper_mm": model.current.grip,
             "tcp_mm": ["x": tcp.x, "y": tcp.y, "z": tcp.z],
+            "tool_pose": (try? jsonObject(CartesianPose(model.robot.toolTransform(model.current.joints)))) ?? [:],
+            "experiment": model.experiment.evaluation(),
             "playback": String(describing: model.playback), "progress": model.progress,
             "manual_motion": model.manualMoving,
             "manual_target": model.manualMoving ? ["joints_deg": model.poseControls.pose.joints, "gripper_mm": model.poseControls.pose.grip] as [String: Any] : NSNull(),

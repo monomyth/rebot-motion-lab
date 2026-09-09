@@ -85,6 +85,7 @@ struct RobotScene: NSViewRepresentable {
         world.addChild(linkEntities["base_link"]!)
         for joint in robot.definition.joints {
             let origin = Entity(), motion = Entity()
+            motion.name = "motion_" + joint.name
             origin.transform = Transform(matrix: floatMatrix(originTransform(xyz: joint.xyz, rpy: joint.rpy)))
             linkEntities[joint.parent]!.addChild(origin); origin.addChild(motion)
             motion.addChild(linkEntities[joint.child]!)
@@ -112,6 +113,7 @@ struct RobotScene: NSViewRepresentable {
         for (axis, color) in [(SIMD3<Float>(0.12, 0, 0), NSColor.systemRed), (SIMD3<Float>(0, 0.12, 0), .systemGreen), (SIMD3<Float>(0, 0, 0.12), .systemBlue)] {
             axesEntity.addChild(line(from: .zero, to: axis, width: 0.002, material: UnlitMaterial(color: color)))
         }
+        axesEntity.name = "tool_axes"
         linkEntities["end_link"]!.addChild(axesEntity)
         updateCamera()
     }
@@ -124,10 +126,14 @@ struct RobotScene: NSViewRepresentable {
         return entity
     }
     func setActive(_ active: Bool) {
+        if !active { owner?.experiment.pause() }
         world.isEnabled = active
         if active, frameSubscription == nil {
             frameSubscription = scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
-                MainActor.assumeIsolated { self?.owner?.advance(seconds: event.deltaTime) }
+                MainActor.assumeIsolated {
+                    self?.owner?.advance(seconds: event.deltaTime)
+                    self?.owner?.experiment.advance()
+                }
             }
         } else if !active { frameSubscription?.cancel(); frameSubscription = nil }
     }

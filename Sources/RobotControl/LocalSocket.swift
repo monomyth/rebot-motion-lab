@@ -12,7 +12,7 @@ public enum LocalSocket {
         var bytes = [CChar](repeating: 0, count: 4096)
         let size = confstr(_CS_DARWIN_USER_TEMP_DIR, &bytes, bytes.count)
         let base = size > 0 && size <= bytes.count ? String(cString: bytes) : "/tmp"
-        return URL(fileURLWithPath: base, isDirectory: true).appendingPathComponent("rebot-motionlab-\(getuid())", isDirectory: true)
+        return URL(fileURLWithPath: base, isDirectory: true).appendingPathComponent("rebot-motionlab-codex-\(getuid())", isDirectory: true)
     }
     public static var path: String { directory.appendingPathComponent("control.sock").path }
     public static func prepareDirectory() throws {

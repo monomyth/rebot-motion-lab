@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "rebot": {
-      "command": "/Applications/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP",
+    "rebot-motion-lab-codex": {
+      "command": "/Applications/ReBot Motion Lab Codex.app/Contents/MacOS/ReBotMCP",
       "args": []
     }
   }

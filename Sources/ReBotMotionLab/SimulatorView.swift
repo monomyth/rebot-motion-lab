@@ -10,7 +10,7 @@ struct SimulatorView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Explore every move.").labFont(.system(size: 27, weight: .medium))
-                    Text("B601-DM · 6-axis kinematic simulator").labFont(.callout).foregroundStyle(.secondary)
+                    SimulationModeLabel(coordinator: model.experiment).labFont(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Label("SIMULATION", systemImage: "circle.dotted").labFont(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(Color.labAccent)
@@ -20,6 +20,8 @@ struct SimulatorView: View {
                 viewport.frame(minWidth: 410, maxWidth: .infinity, maxHeight: .infinity)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
+                        ExperimentPanel(coordinator: model.experiment)
+                        Divider()
                         JointControlsView(model: model)
                         Divider()
                         targetControls
@@ -32,7 +34,7 @@ struct SimulatorView: View {
                 Circle().fill(model.playback == .playing || model.manualMoving ? Color.labAccent : Color.secondary).frame(width: 5, height: 5)
                 Text(model.status).lineLimit(2)
                 Spacer(minLength: 12)
-                Text("Solid base plane · No self-collision or dynamics").foregroundStyle(.tertiary)
+                Text("Solid base plane · Kinematic arm").foregroundStyle(.tertiary)
             }.labFont(.caption).foregroundStyle(.secondary).padding(.horizontal, 22).padding(.bottom, 12)
         }
     }
@@ -343,7 +345,7 @@ HStack(spacing: 12) {
                 Button { model.playPause() } label: {
                     Label(model.playback == .playing ? "Pause" : model.playback == .paused ? "Resume" : "Play", systemImage: model.playback == .playing ? "pause.fill" : "play.fill")
                         .frame(width: 66 * fontScale)
-                }.buttonStyle(.borderedProminent).foregroundStyle(.black).disabled(model.waypoints.isEmpty)
+                }.buttonStyle(.borderedProminent).foregroundStyle(.black).disabled(model.waypoints.isEmpty || model.externalControlLocked)
                 Button { model.stop() } label: { Image(systemName: "stop.fill") }.help("Stop motion · Escape").disabled(!model.hasMotion)
                 ProgressView(value: telemetry.progress).frame(maxWidth: .infinity)
                 Text("Speed").labFont(.caption).foregroundStyle(.secondary)

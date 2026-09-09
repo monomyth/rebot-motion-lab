@@ -4,7 +4,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DESTINATION="${1:-$PROJECT_ROOT/dist}"
 mkdir -p "$DESTINATION"
 DESTINATION="$(cd "$DESTINATION" && pwd)"
-APP="$DESTINATION/ReBot Motion Lab.app"
+APP="$DESTINATION/ReBot Motion Lab Codex.app"
 cd "$PROJECT_ROOT"
 
 # Compile each architecture independently; this also works with Command Line Tools.

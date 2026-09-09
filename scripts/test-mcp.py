@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
         simulator = None
         try:
             client.initialize()
-            assert len(client.rpc("tools/list")["result"]["tools"]) == 12
+            assert len(client.rpc("tools/list")["result"]["tools"]) == 23
             assert len(client.rpc("resources/list")["result"]["resources"]) == 2
             client.call("rebot_get_state", fails=True)
             checks.append("MCP handshake, tool/resource discovery, and unavailable-app error")

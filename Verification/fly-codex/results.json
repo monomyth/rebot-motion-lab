@@ -1,0 +1,132 @@
+{
+  "date": "2026-09-09",
+  "platform": {
+    "macos": "26.7",
+    "architecture": "arm64"
+  },
+  "branch": "feature/fly-brain-codex",
+  "mcp_server": "rebot-motion-lab-codex",
+  "swift_tests_passed": 36,
+  "legacy_mcp_integration_groups_passed": 9,
+  "native_smoke_passed": true,
+  "manual_motion": {
+    "input_events": 100,
+    "lagging_scene_updates": 0,
+    "main_model_notifications": 0,
+    "scene_updates": 218,
+    "seconds": 1.8163114166236483
+  },
+  "trials": [
+    {
+      "cube_xy_mm": [
+        350,
+        0
+      ],
+      "cube_yaw_deg": 0,
+      "passed": true,
+      "checks": [
+        "Asynchronous setup can be cancelled without a partial scene",
+        "Cube configuration and gravity settling",
+        "Exclusive ownership, duplicate/future/stale action rejection, and paused physics clock",
+        "Synchronized front/top RGB observation",
+        "External conventional controller: contact grasp, lift >=100 mm, tilt <=5 degrees, five-second hold",
+        "Opening fingers releases cube under gravity",
+        "Controller timeout releases ownership",
+        "Demonstration recording includes camera observations, actions, outcomes, and controller provenance",
+        "Reset clears success, velocities, contacts and controller",
+        "Vision policy observation excludes exact cube pose"
+      ],
+      "clearance_mm": 115.26584370546658,
+      "tilt_deg": 0.019584450419740048,
+      "hold_seconds": 5.000000260770321,
+      "linear_speed_mm_s": 0,
+      "angular_speed_deg_s": 0,
+      "contacts": [
+        "finger_left_link",
+        "finger_right_link"
+      ],
+      "controller": "conventional",
+      "source_report": "work/fly-final-center/report.json"
+    },
+    {
+      "cube_xy_mm": [
+        330,
+        25
+      ],
+      "cube_yaw_deg": 10,
+      "passed": true,
+      "checks": [
+        "Cube configuration and gravity settling",
+        "Exclusive ownership, duplicate/future/stale action rejection, and paused physics clock",
+        "Synchronized front/top RGB observation",
+        "External conventional controller: contact grasp, lift >=100 mm, tilt <=5 degrees, five-second hold",
+        "Opening fingers releases cube under gravity",
+        "Controller timeout releases ownership",
+        "Reset clears success, velocities, contacts and controller",
+        "Vision policy observation excludes exact cube pose"
+      ],
+      "clearance_mm": 115.33648517753768,
+      "tilt_deg": 0.008185132094646967,
+      "hold_seconds": 5.000000260770321,
+      "linear_speed_mm_s": 0,
+      "angular_speed_deg_s": 0,
+      "contacts": [
+        "finger_left_link",
+        "finger_right_link"
+      ],
+      "controller": "conventional",
+      "source_report": "work/fly-left/report.json"
+    },
+    {
+      "cube_xy_mm": [
+        380,
+        -25
+      ],
+      "cube_yaw_deg": -10,
+      "passed": true,
+      "checks": [
+        "Cube configuration and gravity settling",
+        "Exclusive ownership, duplicate/future/stale action rejection, and paused physics clock",
+        "Synchronized front/top RGB observation",
+        "External conventional controller: contact grasp, lift >=100 mm, tilt <=5 degrees, five-second hold",
+        "Opening fingers releases cube under gravity",
+        "Controller timeout releases ownership",
+        "Reset clears success, velocities, contacts and controller",
+        "Vision policy observation excludes exact cube pose"
+      ],
+      "clearance_mm": 115.01792452565934,
+      "tilt_deg": 0.02435031150518949,
+      "hold_seconds": 5.000000260770321,
+      "linear_speed_mm_s": 0,
+      "angular_speed_deg_s": 0,
+      "contacts": [
+        "finger_left_link",
+        "finger_right_link"
+      ],
+      "controller": "conventional",
+      "source_report": "work/fly-right/report.json"
+    }
+  ],
+  "camera_calibration": {
+    "cube_projected_pixel": [
+      193.73448073780614,
+      159.04325527273286
+    ],
+    "encoded_sizes": [
+      {
+        "camera": "Front",
+        "height": 240,
+        "width": 320
+      },
+      {
+        "camera": "Top",
+        "height": 240,
+        "width": 320
+      }
+    ],
+    "nearest_cube_pixel_error": 0.26901951084478526,
+    "orange_pixels": 193,
+    "success": true
+  },
+  "scope": "native simulator environment; no trained MaleCNS policy bundled"
+}

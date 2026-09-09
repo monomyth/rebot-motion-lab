@@ -86,3 +86,7 @@ node scripts/generate-floor-hulls.mjs
 ```
 
 This writes identical data into the Swift resource bundle and web module. A convex hull preserves exact support against a plane. The generator retains the model's CERN-OHL-W-2.0 license; original STL assets stay unchanged. Tests independently compare contact heights with the original triangle vertices and exercise each fingertip, reversal, finger opening, and an obstructed sweep whose endpoints are both clear.
+
+## Cube experiments
+
+See [FLY_EXPERIMENT.md](FLY_EXPERIMENT.md) for the native physics backend, external controller contract, and isolated verification command. The Codex app uses a distinct bundle ID and default control directory so it can coexist with the original app. The browser app is unchanged.

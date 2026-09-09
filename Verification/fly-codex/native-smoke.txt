@@ -1,0 +1,14 @@
+RealityKit scene initialized
+34 meshes loaded
+53 actuator registers decoded
+Folded startup with closed gripper and synchronized readouts passed
+Manual targets, native slider bindings, immediate pose updates, reversals, limits, and Stop/Reset/preset/navigation cancellation passed
+Solid base plane stops both fingertips, clamps native slider values, and permits immediate reversal
+Joint, gripper, IK, playback, pause/resume and completion checks passed
+Trajectory export/import round trip passed
+Native Command-plus/equal, Command-minus, Command-zero and View menu actions passed
+Captured native simulator and actuator reference views
+MCP previews hide private install paths; copied configurations use rebot-motion-lab-codex and the correct executable
+MCP control page, manual motion state/rejection/stop, and enable/disable listener checks passed
+Smooth preset transition and cached scene navigation passed
+Smooth folding and closed-gripper endpoint passed
