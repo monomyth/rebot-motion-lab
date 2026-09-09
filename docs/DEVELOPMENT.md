@@ -8,7 +8,7 @@ ReBot Motion Lab uses a Swift package with two executables and two shared module
 
 | Module | Responsibility |
 | --- | --- |
-| `RobotCore` | Model/resource loading, lossless STL indexing, forward/inverse kinematics, solid-floor contact, playback, trajectory validation, and reference metadata |
+| `RobotCore` | Model/resource loading, lossless STL indexing, forward/inverse kinematics (including keep-level), solid-floor contact, kinematic cube/grasp, playback, trajectory validation, and reference metadata |
 | `ReBotMotionLab` | SwiftUI state and controls, AppKit window/keyboard integration, RealityKit transforms and cameras, import/export, native checks |
 | `RobotControl` | MCP lifecycle, tool schemas and validation, same-user Unix socket transport |
 | `ReBotMCP` | Newline-delimited stdio server, IPC client, optional app launch |

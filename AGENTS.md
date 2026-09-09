@@ -12,16 +12,20 @@ The user has authorized consolidation into this repository. Preserve the motion 
 - **Do not reintroduce `ManualMotion` or any critically damped / 100 ms chase on slider input.** That lag is what made dragging feel like lost FPS. Presets, IK, MCP pose commands, and sequence playback stay on `MotionPlayer` (quintic interpolation).
 - **Do not bind SwiftUI `Slider` to an `ObservableObject` that publishes on every tick.** Joint/gripper controls use `LiveSlider` (`NSSlider` representable). `updateNSView` must not push `doubleValue` while the mouse is down.
 - **`manualMoving` is “a slider is currently tracking,” not “a filter is catching up.”** It is intentionally not `@Published`. Publishing `AppModel` (status, `manualMoving`, etc.) mid-drag rebuilds `SimulatorView` and `RobotScene.updateNSView` and hitchs the renderer.
-- **`RobotScene` does not observe `AppModel`.** Pose updates go through `applyPose`. `updateNSView` only syncs grid, axes, trace, and camera flags.
+- **`RobotScene` does not observe `AppModel`.** Pose updates go through `applyPose`. `updateNSView` only syncs grid, axes, trace, camera flags, and the cube entity.
 - Numeric TCP/joint readouts may update at 15 Hz. The viewport must not wait on those publishes.
+- **Do not `@Publish` cube pose or servo ticks.** Cube transforms go through `RobotViewport.syncCube`. Servo uses the interactive apply path (`commit` / `applyPose`), not `MotionPlayer` and not `ManualMotion`.
+- Floor limiting must include a **held** cube AABB. Unattached cubes do not collide with the arm.
 
 ## Files
 
 | Path | Role |
 | --- | --- |
-| `Sources/ReBotMotionLab/AppModel.swift` | Pose, playback, interactive apply, MCP-facing `manualMoving` |
+| `Sources/ReBotMotionLab/AppModel.swift` | Pose, playback, interactive apply, cube, servo, MCP-facing `manualMoving` |
 | `Sources/ReBotMotionLab/SimulatorView.swift` | Controls, `LiveSlider` / `TrackingSlider` |
-| `Sources/ReBotMotionLab/RobotViewport.swift` | RealityKit hierarchy and `applyPose` |
+| `Sources/ReBotMotionLab/RobotViewport.swift` | RealityKit hierarchy, `applyPose`, cube, capture |
+| `Sources/RobotCore/SceneObject.swift` | Cube state and floor placement |
+| `Sources/RobotCore/Grasp.swift` | Kinematic attach/release |
 | `Sources/RobotCore/MotionPlayer.swift` | Playback / preset interpolation |
 | `Sources/ReBotMotionLab/SmokeCheck.swift` | Native slider harness; expects immediate tracking, not lag |
 

@@ -26,14 +26,15 @@ The repository root is the Swift package root. Open `Package.swift` in Xcode or 
 ## Native app features
 
 - **Immediate manual motion.** Sliders and numeric fields apply joint and gripper values on the same event; the 3D arm tracks the control without a smoothing delay.
-- **Stop at the floor.** Every moving link and both gripper fingertips respect the solid base plane. Manual controls stop at contact and reverse immediately. Presets and sequences stop at the first obstructed point.
-- **Fold, unfold, and position.** Start in the folded pose with a closed gripper. Choose Folded, Ready, Reach, or Upright, or solve for a tool position with inverse kinematics.
+- **Stop at the floor.** Every moving link, both gripper fingertips, and a held scene cube respect the solid base plane. Manual controls stop at contact and reverse immediately. Presets and sequences stop at the first obstructed point.
+- **Scene cube and kinematic grasp.** A 40 mm cube sits on the floor in front of the base. Closing the gripper around it attaches the cube to the tool; opening releases it. There is no payload mass or contact friction. The arm can pass through an unattached cube.
+- **Fold, unfold, and position.** Start in the folded pose with a closed gripper. Choose Folded, Ready, Reach, or Upright, or solve for a tool position. Optional **Keep tool level** IK holds the tool or attached cube within 5° of world vertical.
 - **Build a motion sequence.** Capture named poses, play/pause/resume, adjust speed, and import or export portable trajectory JSON.
 - **Inspect the scene.** Orbit, pan, and zoom; switch camera presets; show the grid, tool axes, and TCP trace.
 - **Keep the reference beside the simulator.** Browse 53 documented actuator registers, seven actuator assignments, SDK defaults, command fields, operating modes, and source links.
-- **Control it through MCP.** A bundled native server exposes 12 tools and two resources to compatible clients. No Python or Node runtime is needed to use it.
+- **Control it through MCP.** A bundled native server exposes 18 tools and two resources, including cube placement, JPEG capture, level IK, and a servo mode for closed-loop clients. No Python or Node runtime is needed to use it.
 
-This is a **kinematic simulator**. It enforces contact with the base plane, including the gripper fingers. It does not connect to robot hardware or simulate self-collisions, other obstacles, payloads, forces, torque, thermal behavior, or actuator dynamics. Published motor settings are reference data; they do not configure the simulator.
+This is a **kinematic simulator**. It enforces contact with the base plane, including the gripper fingers and a held cube. It does not connect to robot hardware or simulate self-collisions, payload mass, forces, torque, thermal behavior, or actuator dynamics. An unattached cube is a visual/grasp target only. Published motor settings are reference data; they do not configure the simulator. A fly-brain or other neural controller belongs in an external client, not in this app.
 
 ## Get started
 
@@ -88,7 +89,7 @@ With the app in Applications, a standard stdio configuration is:
 }
 ```
 
-Try: *“Unfold the robot to Ready, rotate joint 1 to 30 degrees, then close the gripper.”*
+Try: *“Unfold the robot to Ready, rotate joint 1 to 30 degrees, then close the gripper.”* Cube and capture: *“Show the Top camera, place the cube at 280 mm, and capture a 320×240 view.”*
 
 The helper can launch the app. Tools return when a move is accepted; clients read state until it finishes. All control stays on the same Mac through a private Unix socket. MCP is enabled by default and can be disabled in the app. It controls this simulator only.
 

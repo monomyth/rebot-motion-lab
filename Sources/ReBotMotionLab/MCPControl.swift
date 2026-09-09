@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import RobotCore
 import RobotControl
+import simd
 
 @MainActor final class MCPControl: ObservableObject {
     @Published private(set) var enabled = false
@@ -21,6 +22,7 @@ import RobotControl
         if persist { UserDefaults.standard.set(value, forKey: "mcpControlEnabled") }
         if !value {
             server.stop(); enabled = false; status = "MCP control is off"
+            model?.exitServo()
             if model?.hasMotion == true { model?.stop() }
             return
         }
@@ -73,11 +75,22 @@ import RobotControl
     private func boundedPose(_ joints: [Double], grip: Double, name: String, model: AppModel) throws -> Pose {
         guard joints.count == 6, joints.allSatisfy(\.isFinite), joints == model.robot.clampPose(joints), grip.isFinite, (0...90).contains(grip) else { throw ControlError("Pose is outside simulator joint/gripper limits. Read rebot_get_state for limits; no motion was started.") }
         let pose = Pose(name: name, joints: joints, grip: grip)
-        guard model.floor.isAllowed(pose) else { throw ControlError("Pose intersects the solid base plane, including the gripper fingers. No motion was started.") }
+        guard model.floor.isAllowed(pose, cube: model.cube) else { throw ControlError("Pose intersects the solid base plane, including the gripper fingers. No motion was started.") }
         return pose
     }
     private func requireStopped(_ model: AppModel) throws {
         guard !model.hasMotion else { throw ControlError("Motion is \(model.manualMoving ? "being adjusted with a slider" : String(describing: model.playback)). Use rebot_playback(action: stop) before sending another pose or editing the sequence.") }
+    }
+    private func requireScripted(_ model: AppModel) throws {
+        try requireStopped(model)
+        guard model.controlMode == .scripted else { throw ControlError("The simulator is in servo mode. Use rebot_set_control_mode with scripted, or rebot_servo_joints / rebot_servo_tcp.") }
+    }
+    private func doubles(_ value: Any) -> [Double] {
+        (value as! [Any]).map { ($0 as! NSNumber).doubleValue }
+    }
+    private func optionalDouble(_ value: Any?) -> Double? {
+        if value == nil || value is NSNull { return nil }
+        return (value as? NSNumber)?.doubleValue
     }
     func handle(_ request: [String: Any]) throws -> [String: Any] {
         guard enabled, let model else { throw ControlError("MCP control is off") }
@@ -92,15 +105,15 @@ import RobotControl
         var extra: [String: Any] = [:]
         switch name {
         case "rebot_move_joints", "rebot_set_joint", "rebot_set_gripper":
-            try requireStopped(model)
+            try requireScripted(model)
             var joints = model.current.joints, grip = model.current.grip
-            if name == "rebot_move_joints" { joints = args["joints_deg"] as! [Double]; grip = args["gripper_mm"] as? Double ?? grip }
+            if name == "rebot_move_joints" { joints = doubles(args["joints_deg"]!); grip = args["gripper_mm"] as? Double ?? grip }
             if name == "rebot_set_joint" { joints[(args["joint"] as! Int) - 1] = args["angle_deg"] as! Double }
             if name == "rebot_set_gripper" { grip = args["opening_mm"] as! Double }
             let pose = try boundedPose(joints, grip: grip, name: "MCP target", model: model)
             showSimulator(model); model.moveToPose(pose)
         case "rebot_move_to_position":
-            try requireStopped(model)
+            try requireScripted(model)
             let target = SIMD3(args["x_mm"] as! Double, args["y_mm"] as! Double, args["z_mm"] as! Double)
             let solution = model.robot.solve(target: target / 1000, initial: model.current.joints)
             guard solution.success else { throw ControlError("No IK solution within 2 mm from the current pose. The robot pose was preserved.") }
@@ -108,14 +121,28 @@ import RobotControl
             model.targetX = target.x; model.targetY = target.y; model.targetZ = target.z
             showSimulator(model); model.moveToPose(pose)
             extra["ik_error_mm"] = solution.error * 1000
+        case "rebot_move_to_pose":
+            try requireScripted(model)
+            try moveToPose(args, model: model, extra: &extra)
+        case "rebot_set_cube":
+            try setCube(args, model: model)
+        case "rebot_capture_view":
+            extra.merge(try capture(args, model: model)) { _, new in new }
+        case "rebot_set_control_mode":
+            showSimulator(model)
+            if args["mode"] as! String == "servo" { model.enterServo() } else { model.exitServo() }
+        case "rebot_servo_joints":
+            extra.merge(try servoJoints(args, model: model)) { _, new in new }
+        case "rebot_servo_tcp":
+            extra.merge(try servoTCP(args, model: model)) { _, new in new }
         case "rebot_apply_preset":
-            try requireStopped(model)
+            try requireScripted(model)
             let preset = robotPresets.first { $0.name == args["name"] as? String }!
             showSimulator(model); model.moveToPose(Pose(name: preset.name, joints: preset.joints, grip: preset.grip ?? model.current.grip))
         case "rebot_playback":
             switch args["action"] as! String {
             case "play":
-                try requireStopped(model)
+                try requireScripted(model)
                 guard model.playback == .stopped, !model.waypoints.isEmpty else { throw ControlError("play needs a stopped simulator and a nonempty sequence; use resume for paused motion") }
                 showSimulator(model); model.playPause()
             case "pause":
@@ -130,18 +157,18 @@ import RobotControl
             }
         case "rebot_set_speed": model.speed = args["percent"] as! Double
         case "rebot_add_waypoint":
-            try requireStopped(model)
+            try requireScripted(model)
             guard model.waypoints.count < 1000 else { throw ControlError("Sequence already has 1000 poses") }
             let label = args["name"] as? String ?? "Pose \(model.waypoints.count + 1)"
             model.waypoints.append(Pose(name: label, joints: model.current.joints, grip: model.current.grip))
             model.status = "MCP added \(label)"
         case "rebot_set_sequence":
-            try requireStopped(model)
+            try requireScripted(model)
             let entries = args["poses"] as! [[String: Any]]
             let poses = try entries.map { try boundedPose($0["joints_deg"] as! [Double], grip: $0["gripper_mm"] as! Double, name: $0["name"] as! String, model: model) }
             model.waypoints = poses; model.status = "MCP loaded \(poses.count) waypoints"
         case "rebot_clear_sequence":
-            try requireStopped(model); model.waypoints = []; model.status = "MCP cleared the sequence"
+            try requireScripted(model); model.waypoints = []; model.status = "MCP cleared the sequence"
         case "rebot_set_view":
             showSimulator(model)
             if let camera = args["camera"] as? String { model.resetCamera(camera) }
@@ -156,14 +183,109 @@ import RobotControl
         extra["accepted"] = true; extra["state"] = state(model)
         return extra
     }
+    private func moveToPose(_ args: [String: Any], model: AppModel, extra: inout [String: Any]) throws {
+        let target = SIMD3(args["x_mm"] as! Double, args["y_mm"] as! Double, args["z_mm"] as! Double)
+        let keepLevel = args["keep_level"] as? Bool ?? false
+        let solution = model.robot.solve(
+            target: target / 1000, initial: model.current.joints,
+            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(model.cube)
+        )
+        guard solution.success else {
+            throw ControlError(keepLevel
+                ? "No level IK solution within 2 mm and 5°. The robot pose was preserved."
+                : "No IK solution within 2 mm from the current pose. The robot pose was preserved.")
+        }
+        let pose = try boundedPose(solution.joints, grip: model.current.grip, name: "MCP pose target", model: model)
+        model.targetX = target.x; model.targetY = target.y; model.targetZ = target.z
+        showSimulator(model); model.moveToPose(pose)
+        extra["ik_error_mm"] = solution.error * 1000
+        extra["orientation_error_deg"] = solution.orientationError * 180 / .pi
+    }
+    private func setCube(_ args: [String: Any], model: AppModel) throws {
+        var cube = model.cube
+        if let present = args["present"] as? Bool { cube.present = present }
+        if args["attached"] as? Bool == false {
+            cube.attached = false
+            cube.attachLocal = matrix_identity_double4x4
+            cube.restOnFloor()
+        }
+        if cube.present {
+            let center: SIMD3<Double>? = {
+                if args["x_mm"] == nil && args["y_mm"] == nil && args["z_mm"] == nil { return nil }
+                return SIMD3(
+                    optionalDouble(args["x_mm"]) ?? cube.center.x * 1000,
+                    optionalDouble(args["y_mm"]) ?? cube.center.y * 1000,
+                    optionalDouble(args["z_mm"]) ?? cube.center.z * 1000
+                ) / 1000
+            }()
+            let size = optionalDouble(args["size_mm"]).map { SIMD3(repeating: $0 / 1000) }
+            let yaw = optionalDouble(args["yaw_deg"]).map { $0 * .pi / 180 }
+            if center != nil || size != nil || yaw != nil {
+                cube = try cube.placing(center: center, size: size, yaw: yaw)
+                cube.present = true
+            }
+        }
+        model.applyCube(cube)
+        model.status = cube.present ? (cube.attached ? "Cube attached" : "Cube placed") : "Cube hidden"
+    }
+    private func capture(_ args: [String: Any], model: AppModel) throws -> [String: Any] {
+        showSimulator(model)
+        guard let viewport = model.viewport else { throw ControlError("The 3D scene is not ready to capture.") }
+        let width = Int(optionalDouble(args["width"]) ?? 320)
+        let height = Int(optionalDouble(args["height"]) ?? 240)
+        let apply = args["apply"] as? Bool ?? false
+        let camera = args["camera"] as? String
+        guard let result = viewport.captureJPEG(camera: camera, apply: apply, width: width, height: height) else {
+            throw ControlError("The scene camera could not be captured.")
+        }
+        return [
+            "camera": camera ?? model.camera,
+            "width": width, "height": height,
+            "jpeg_base64": result.data.base64EncodedString(),
+            "cube_in_view": result.cubeInView,
+            "tcp_in_view": result.tcpInView
+        ]
+    }
+    private func servoJoints(_ args: [String: Any], model: AppModel) throws -> [String: Any] {
+        guard model.controlMode == .servo else { throw ControlError("rebot_servo_joints requires servo mode.") }
+        try requireStopped(model)
+        var joints = model.current.joints, grip = model.current.grip
+        if args["joints_deg"] != nil { joints = doubles(args["joints_deg"]!) }
+        if let value = optionalDouble(args["gripper_mm"]) { grip = value }
+        guard args["joints_deg"] != nil || args["gripper_mm"] != nil else { throw ControlError("Provide joints_deg and/or gripper_mm.") }
+        let pose = try boundedPose(joints, grip: grip, name: "servo", model: model)
+        showSimulator(model)
+        let applied = model.servoTo(pose)
+        return ["clamped": applied.joints != joints || applied.grip != grip]
+    }
+    private func servoTCP(_ args: [String: Any], model: AppModel) throws -> [String: Any] {
+        guard model.controlMode == .servo else { throw ControlError("rebot_servo_tcp requires servo mode.") }
+        try requireStopped(model)
+        let target = SIMD3(args["x_mm"] as! Double, args["y_mm"] as! Double, args["z_mm"] as! Double)
+        let keepLevel = args["keep_level"] as? Bool ?? false
+        let solution = model.robot.solve(
+            target: target / 1000, initial: model.current.joints,
+            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(model.cube)
+        )
+        guard solution.success else { throw ControlError("No IK solution within 2 mm from the current pose. The robot pose was preserved.") }
+        let pose = try boundedPose(solution.joints, grip: model.current.grip, name: "servo tcp", model: model)
+        showSimulator(model)
+        _ = model.servoTo(pose)
+        return ["ik_error_mm": solution.error * 1000, "orientation_error_deg": solution.orientationError * 180 / .pi]
+    }
     private func state(_ model: AppModel) -> [String: Any] {
         let tcp = model.tcp
+        let rpy = model.tcpRPY
+        let cube = model.cube
+        let top = cube.topNormal
         return [
             "app_version": ControlCatalog.version, "instance_id": instanceID, "process_id": ProcessInfo.processInfo.processIdentifier,
             "simulation": "kinematic", "hardware_connected": false, "scene_ready": model.sceneReady,
-            "mcp_enabled": enabled, "command_revision": revision,
+            "mcp_enabled": enabled, "command_revision": revision, "control_mode": model.controlMode.rawValue,
             "joints_deg": model.current.joints, "gripper_mm": model.current.grip,
             "tcp_mm": ["x": tcp.x, "y": tcp.y, "z": tcp.z],
+            "tcp_rpy_deg": ["roll": rpy.x, "pitch": rpy.y, "yaw": rpy.z],
+            "tcp_level": model.tcpLevel,
             "playback": String(describing: model.playback), "progress": model.progress,
             "manual_motion": model.manualMoving,
             "manual_target": model.manualMoving ? ["joints_deg": model.poseControls.pose.joints, "gripper_mm": model.poseControls.pose.grip] as [String: Any] : NSNull(),
@@ -174,7 +296,14 @@ import RobotControl
             "floor": ["enabled": true, "height_mm": FloorConstraint.height * 1000, "minimum_robot_height_mm": model.floor.minimumHeight(model.current) * 1000],
             "presets": robotPresets.map { ["name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip as Any? ?? NSNull()] as [String: Any] },
             "waypoints": model.waypoints.map { ["id": $0.id.uuidString, "name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip] as [String: Any] },
-            "view": ["camera": model.camera, "grid": model.showGrid, "tool_axes": model.showAxes, "trace": model.showTrace]
+            "view": ["camera": model.camera, "grid": model.showGrid, "tool_axes": model.showAxes, "trace": model.showTrace],
+            "objects": ["cube": [
+                "present": cube.present, "attached": cube.attached,
+                "size_mm": cube.size.x * 1000,
+                "center_mm": ["x": cube.center.x * 1000, "y": cube.center.y * 1000, "z": cube.center.z * 1000],
+                "yaw_deg": cube.yaw * 180 / .pi,
+                "top_normal": ["x": top.x, "y": top.y, "z": top.z]
+            ] as [String: Any]]
         ]
     }
 }

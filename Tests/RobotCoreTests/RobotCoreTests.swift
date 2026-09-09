@@ -48,6 +48,16 @@ struct RobotCoreTests {
         expectFalse(k.solve(target: [.nan, 0, 0], initial: homePose).success)
         expectFalse(k.solve(target: [0, .infinity, 0], initial: homePose).success)
     }
+    @Test func testLevelIKReachesCubeWorkspace() throws {
+        let k = try robot()
+        let result = k.solve(target: SIMD3(0.28, 0, 0.20), initial: homePose, keepLevel: true, cubeTopInTool: nil)
+        expectLess(result.error, 0.005)
+        expectLess(result.orientationError, 15 * degreesToRadians)
+        let initial = homePose
+        let missed = k.solve(target: SIMD3(5, 5, 5), initial: initial, keepLevel: true, cubeTopInTool: nil)
+        expectFalse(missed.success)
+        expectEqual(initial, homePose)
+    }
     @Test func testBoundsAndInvalidInputs() throws {
         let k = try robot()
         let q = k.clampPose([999, -999, .nan, .infinity])

@@ -25,53 +25,57 @@ public struct FloorConstraint: Sendable {
         radiusBound = robot.definition.joints.reduce(0) { $0 + simd_length(vector($1.xyz)) }
             + (supports.flatMap(\.points).map(simd_length).max() ?? 0) + 0.09
     }
-    public func minimumHeight(_ pose: Pose) -> Double {
+    public func minimumHeight(_ pose: Pose, cube: CubeState? = nil) -> Double {
         let transforms = robot.transforms(pose.joints, grip: pose.grip)
         var height = Double.infinity
         for hull in supports {
             let m = transforms[hull.name]!
             for p in hull.points { height = min(height, m[0].z * p.x + m[1].z * p.y + m[2].z * p.z + m[3].z) }
         }
+        if let cube, cube.present, cube.attached {
+            height = min(height, Grasp.aligned(cube, endLink: transforms["end_link"]!).minimumHeight)
+        }
         return height
     }
-    public func isAllowed(_ pose: Pose) -> Bool { minimumHeight(pose) >= Self.height }
+    public func isAllowed(_ pose: Pose, cube: CubeState? = nil) -> Bool { minimumHeight(pose, cube: cube) >= Self.height }
 
     /// Returns the first contact along the requested motion, even when its endpoint is clear.
-    public func limited(from: Pose, to: Pose) -> Pose {
+    public func limited(from: Pose, to: Pose, cube: CubeState? = nil) -> Pose {
         let changed = (0..<6).filter { from.joints[$0] != to.joints[$0] }
         if changed.isEmpty {
             // Finger travel is linear, so endpoint heights bound the complete swept motion.
-            let end = minimumHeight(to)
+            let end = minimumHeight(to, cube: cube)
             if end >= Self.height + Self.margin { return to }
-            let start = minimumHeight(from)
+            let start = minimumHeight(from, cube: cube)
             var low = 0.0, high = 1.0
             guard start >= Self.height else { return from }
             for _ in 0..<32 {
                 let middle = (low + high) / 2
-                if minimumHeight(blend(from, to, middle)) >= Self.height + Self.margin { low = middle } else { high = middle }
+                if minimumHeight(blend(from, to, middle), cube: cube) >= Self.height + Self.margin { low = middle } else { high = middle }
             }
             return blend(from, to, low)
         }
-        if changed.count == 1, from.grip == to.grip {
+        if changed.count == 1, from.grip == to.grip, cube?.attached != true {
             return limitJoint(from: from, to: to, index: changed[0])
         }
         // For coordinated moves, bound the curvature of every vertex's height. This
         // certifies intervals instead of merely testing samples that could tunnel through.
         let angle = zip(from.joints, to.joints).reduce(0) { $0 + abs($1.1 - $1.0) * degreesToRadians }
-        let curvature = radiusBound * angle * angle + 2 * angle * abs(to.grip - from.grip) / 2000
+        let held = cube?.attached == true ? simd_length(cube!.size) / 2 : 0
+        let curvature = (radiusBound + held) * angle * angle + 2 * angle * abs(to.grip - from.grip) / 2000
         var evaluations = 0
         func walk(_ a: Double, _ b: Double, _ ha: Double, _ hb: Double, _ depth: Int) -> Double {
             if min(ha, hb) >= Self.margin, min(ha, hb) >= curvature * (b - a) * (b - a) / 8 { return b }
             // Fail closed if unusually complex motion exhausts the bounded search.
             if depth == 24 || evaluations >= 4096 { return a }
             let m = (a + b) / 2
-            let hm = minimumHeight(blend(from, to, m)) - Self.height
+            let hm = minimumHeight(blend(from, to, m), cube: cube) - Self.height
             evaluations += 1
             let first = walk(a, m, ha, hm, depth + 1)
             if first < m { return first }
             return walk(m, b, hm, hb, depth + 1)
         }
-        let fraction = walk(0, 1, minimumHeight(from) - Self.height, minimumHeight(to) - Self.height, 0)
+        let fraction = walk(0, 1, minimumHeight(from, cube: cube) - Self.height, minimumHeight(to, cube: cube) - Self.height, 0)
         return fraction == 1 ? to : blend(from, to, fraction)
     }
     private func limitJoint(from: Pose, to: Pose, index: Int) -> Pose {

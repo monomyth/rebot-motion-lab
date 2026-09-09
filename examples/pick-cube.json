@@ -1,0 +1,33 @@
+{
+  "format": "rebot-motion-lab-v1",
+  "robot": "B601-DM",
+  "simulation": "kinematic",
+  "angle_unit": "degrees",
+  "gripper_unit": "mm",
+  "speed_percent": 50,
+  "interpolation": "quintic smoothstep",
+  "joint_order": ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"],
+  "note": "Scripted fallback for the default 40 mm cube at x=280 mm. Prefer rebot_move_to_pose keep_level plus gripper close for a reliable pick. Joints are within URDF limits.",
+  "poses": [
+    {
+      "name": "Ready open",
+      "joints": [0, -95, -95, 10, 0, 0],
+      "gripper_opening": 60
+    },
+    {
+      "name": "Above cube",
+      "joints": [0, -125, -115, 30, 0, 0],
+      "gripper_opening": 60
+    },
+    {
+      "name": "Close gripper",
+      "joints": [0, -125, -115, 30, 0, 0],
+      "gripper_opening": 20
+    },
+    {
+      "name": "Lift",
+      "joints": [0, -90, -105, 15, 0, 0],
+      "gripper_opening": 20
+    }
+  ]
+}

@@ -4,7 +4,7 @@ The application source was verified locally with Apple Swift 6.3.3 on Intel macO
 
 - **27 Swift Testing tests passed:** complete gripper floor contact, swept motion, kinematics, bounds, malformed inputs, reference completeness, trajectory round trips, STL preservation, playback timing, and MCP protocol/IPC.
 - **Native smoke checks passed:** folded startup/reset, scene and TCP agreement, manual controls, IK, playback/pause/resume/completion, presets, scene reuse, trajectory serialization, native font shortcuts, reference views, MCP control state, and private-path masking in both MCP configuration formats.
-- **Nine MCP integration groups passed** against an isolated native application, covering all 12 tools and both resources. The public record contains check names without local instance identifiers.
+- **Nine MCP integration groups passed** against an isolated native application, covering all 12 tools and both resources in 1.5. Version 1.6 adds cube, grasp, level IK, capture, and servo tools (18 total); re-run `python3 scripts/test-mcp.py` after packaging.
 - **Native slider sample:** 100 action/binding updates over 2.07 seconds, 119 scene updates (~58/s), 0 lagging frames, 0 main-model notifications, and 22 actual-position readout notifications.
 
 Files:

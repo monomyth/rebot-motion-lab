@@ -10,7 +10,7 @@ struct SimulatorView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Explore every move.").labFont(.system(size: 27, weight: .medium))
-                    Text("B601-DM · 6-axis kinematic simulator").labFont(.callout).foregroundStyle(.secondary)
+                    Text("B601-DM · 6-axis kinematic simulator · scene cube").labFont(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Label("SIMULATION", systemImage: "circle.dotted").labFont(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(Color.labAccent)
@@ -32,7 +32,7 @@ struct SimulatorView: View {
                 Circle().fill(model.playback == .playing || model.manualMoving ? Color.labAccent : Color.secondary).frame(width: 5, height: 5)
                 Text(model.status).lineLimit(2)
                 Spacer(minLength: 12)
-                Text("Solid base plane · No self-collision or dynamics").foregroundStyle(.tertiary)
+                Text(model.controlMode == .servo ? "Servo mode · Immediate pose" : "Solid base plane · Kinematic cube grasp").foregroundStyle(.tertiary)
             }.labFont(.caption).foregroundStyle(.secondary).padding(.horizontal, 22).padding(.bottom, 12)
         }
     }
@@ -78,14 +78,17 @@ struct SimulatorView: View {
             HStack(spacing: 8) {
                 targetField("X", $model.targetX); targetField("Y", $model.targetY); targetField("Z", $model.targetZ)
             }
+            Toggle("Keep tool level", isOn: $model.keepLevel).labFont(.caption)
             HStack {
                 Button("Use current") { model.useCurrentTarget() }
                 Spacer()
                 Button("Solve & move") { model.solve() }.buttonStyle(.borderedProminent).foregroundStyle(.black)
             }.controlSize(.small)
-            Text("Position-only IK. Wrist orientation is free. Solutions must be within 2 mm; unreachable targets keep the current pose.")
+            Text(model.keepLevel
+                 ? "Level IK keeps the tool or attached cube within 5° of world vertical. Solutions must be within 2 mm; unreachable targets keep the current pose."
+                 : "Position-only IK. Wrist orientation is free. Solutions must be within 2 mm; unreachable targets keep the current pose.")
                 .labFont(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.disabled(model.controlsLocked)
+        }.disabled(model.scriptedLocked)
     }
     private func targetField(_ label: String, _ value: Binding<Double>) -> some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -99,9 +102,9 @@ struct SimulatorView: View {
                 Text("Motion sequence").labFont(.headline)
                 Text("\(model.waypoints.count) poses").labFont(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Example") { model.waypoints = Pose.example }.disabled(model.controlsLocked)
-                Button("Clear") { model.waypoints = [] }.disabled(model.controlsLocked || model.waypoints.isEmpty)
-                Button { model.addWaypoint() } label: { Label("Add pose", systemImage: "plus") }.disabled(model.controlsLocked)
+                Button("Example") { model.waypoints = Pose.example }.disabled(model.scriptedLocked)
+                Button("Clear") { model.waypoints = [] }.disabled(model.scriptedLocked || model.waypoints.isEmpty)
+                Button { model.addWaypoint() } label: { Label("Add pose", systemImage: "plus") }.disabled(model.scriptedLocked)
             }.controlSize(.small)
             if model.waypoints.isEmpty {
                 Text("Move the robot, then add a pose to start a sequence.").labFont(.callout).foregroundStyle(.secondary).frame(height: 78)
@@ -151,6 +154,7 @@ private struct JointControlsView: View {
                     Button(preset.name) { model.moveToPose(Pose(name: preset.name, joints: preset.joints, grip: preset.grip ?? model.current.grip)) }
                         .frame(maxWidth: .infinity)
                         .help(preset.name == "Folded" ? "Fold to startup position and close the gripper" : "Move smoothly to \(preset.name)")
+                        .disabled(model.scriptedLocked)
                 }
             }.controlSize(.small)
             ForEach(Array(model.robot.definition.armJoints.enumerated()), id: \.offset) { i, joint in
@@ -322,6 +326,16 @@ VStack(alignment: .leading, spacing: 6) {
                             coordinate("X", telemetry.tcp.x, .red)
                             coordinate("Y", telemetry.tcp.y, .green)
                             coordinate("Z", telemetry.tcp.z, .blue)
+                        }
+                        HStack(spacing: 15) {
+                            coordinate("R", telemetry.rpy.x, .secondary)
+                            coordinate("P", telemetry.rpy.y, .secondary)
+                            coordinate("Y", telemetry.rpy.z, .secondary)
+                            Text(telemetry.tcpLevel ? "LEVEL" : "TILT").labFont(.system(size: 9, weight: .bold)).foregroundStyle(telemetry.tcpLevel ? Color.labAccent : .orange)
+                        }
+                        if telemetry.cube.present {
+                            Text(telemetry.cube.attached ? "CUBE ATTACHED" : String(format: "CUBE  %.0f, %.0f, %.0f mm", telemetry.cube.center.x * 1000, telemetry.cube.center.y * 1000, telemetry.cube.center.z * 1000))
+                                .labFont(.system(size: 9, weight: .bold)).foregroundStyle(telemetry.cube.attached ? Color.labAccent : .secondary)
                         }
                     }.padding(12).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }

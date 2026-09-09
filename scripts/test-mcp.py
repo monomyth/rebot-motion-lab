@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the packaged stdio server against an isolated native simulator instance."""
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -79,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
         simulator = None
         try:
             client.initialize()
-            assert len(client.rpc("tools/list")["result"]["tools"]) == 12
+            assert len(client.rpc("tools/list")["result"]["tools"]) == 18
             assert len(client.rpc("resources/list")["result"]["resources"]) == 2
             client.call("rebot_get_state", fails=True)
             checks.append("MCP handshake, tool/resource discovery, and unavailable-app error")
@@ -170,6 +171,44 @@ with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as raw:
                 raw.settimeout(6); raw.connect(str(Path(directory)/"control.sock")); raw.sendall(b"not-json\n")
                 assert json.loads(raw.recv(8192))["ok"] is False
+            client.call("rebot_playback", {"action": "reset"})
+            assert client.state()["joints_deg"] == [0]*6 and client.state()["gripper_mm"] == 0
+            cube = client.state()["objects"]["cube"]
+            assert cube["present"] and not cube["attached"]
+            assert abs(cube["center_mm"]["x"] - 280) < 1
+            client.call("rebot_set_cube", {"x_mm": 280, "y_mm": 0, "z_mm": -50}, fails=True)
+            assert abs(client.state()["objects"]["cube"]["center_mm"]["x"] - 280) < 1
+            client.call("rebot_set_cube", {"x_mm": 300, "y_mm": 40, "z_mm": 20, "size_mm": 40, "yaw_deg": 15})
+            placed = client.state()["objects"]["cube"]
+            assert abs(placed["center_mm"]["x"] - 300) < 0.1 and not placed["attached"]
+            client.call("rebot_playback", {"action": "reset"})
+            restored = client.state()["objects"]["cube"]
+            assert abs(restored["center_mm"]["x"] - 280) < 1 and not restored["attached"]
+            checks.append("Cube spawn, floor rejection, placement, and reset restore")
+            client.call("rebot_apply_preset", {"name": "Ready"})
+            client.wait_stopped()
+            client.call("rebot_set_control_mode", {"mode": "servo"})
+            assert client.state()["control_mode"] == "servo"
+            client.call("rebot_move_joints", {"joints_deg": [0,-95,-95,10,0,0]}, fails=True)
+            started = time.monotonic()
+            servo = client.call("rebot_servo_joints", {"joints_deg": [10,-95,-95,10,0,0], "gripper_mm": 40})
+            elapsed = (time.monotonic() - started) * 1000
+            assert servo["accepted"] and abs(client.state()["joints_deg"][0] - 10) < 0.001
+            client.call("rebot_set_control_mode", {"mode": "scripted"})
+            assert client.state()["control_mode"] == "scripted"
+            checks.append(f"Servo mode rejects scripted moves and applies immediate joints ({elapsed:.1f} ms)")
+            pose = client.call("rebot_move_to_pose", {"x_mm": 280, "y_mm": 0, "z_mm": 200, "keep_level": True})
+            assert pose["accepted"]
+            leveled = client.wait_stopped()
+            assert leveled["tcp_level"] is True
+            assert abs(leveled["tcp_mm"]["x"] - 280) < 2
+            capture = client.call("rebot_capture_view", {"camera": "Top", "width": 320, "height": 240, "apply": False})
+            assert capture["width"] == 320 and capture["cube_in_view"] is True
+            assert client.state()["view"]["camera"] == leveled["view"]["camera"]
+            jpeg = base64.b64decode(capture["jpeg_base64"])
+            assert jpeg[:2] == b"\xff\xd8"
+            (options.output / "capture-top.jpg").write_bytes(jpeg)
+            checks.append("Level IK, Top capture of arm+cube, camera apply=false")
             client.call("rebot_playback", {"action": "reset"})
             assert client.state()["joints_deg"] == [0]*6 and client.state()["gripper_mm"] == 0
             checks.append("Malformed IPC recovery and reset to folded startup")

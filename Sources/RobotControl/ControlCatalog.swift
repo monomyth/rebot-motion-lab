@@ -2,7 +2,7 @@ import Foundation
 import CoreFoundation
 
 public enum ControlCatalog {
-    public static let version = "1.5"
+    public static let version = "1.6"
     private static func number(_ description: String, min: Double? = nil, max: Double? = nil) -> [String: Any] {
         var s: [String: Any] = ["type": "number", "description": description]
         if let min { s["minimum"] = min }; if let max { s["maximum"] = max }; return s
@@ -13,11 +13,40 @@ public enum ControlCatalog {
          "annotations": ["readOnlyHint": readOnly, "destructiveHint": destructive, "openWorldHint": false]]
     }
     public static let tools: [[String: Any]] = [
-        tool("rebot_get_state", "Read the live simulator pose, TCP in mm, joint limits, playback, sequence, presets, camera, and app instance. No hardware connection.", readOnly: true),
+        tool("rebot_get_state", "Read the live simulator pose, TCP in mm, tool RPY, cube, grasp, control mode, joint limits, playback, sequence, presets, camera, and app instance. No hardware connection.", readOnly: true),
         tool("rebot_move_joints", "Smoothly move all six simulated joints. Angles must be within get_state limits. Returns accepted motion; poll get_state for completion. Stop existing motion first.", ["joints_deg": ["type": "array", "items": ["type": "number"], "minItems": 6, "maxItems": 6], "gripper_mm": number("Optional gripper opening; otherwise preserved.", min: 0, max: 90)], required: ["joints_deg"]),
         tool("rebot_set_joint", "Smoothly move one simulated joint, preserving other angles and gripper. Stop existing motion first.", ["joint": ["type": "integer", "minimum": 1, "maximum": 6], "angle_deg": number("Target angle in degrees; see get_state joint limits.")], required: ["joint", "angle_deg"]),
         tool("rebot_set_gripper", "Smoothly change the simulated gripper opening, preserving the arm pose. Stop existing motion first.", ["opening_mm": number("0 is closed; 90 is open.", min: 0, max: 90)], required: ["opening_mm"]),
-        tool("rebot_move_to_position", "Position-only IK in robot base coordinates (mm). Orientation is unconstrained. Unreachable targets leave the pose unchanged. Returns accepted motion; poll get_state until stopped.", ["x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm.")], required: ["x_mm", "y_mm", "z_mm"]),
+        tool("rebot_move_to_position", "Position-only IK in robot base coordinates (mm). Orientation is unconstrained. Unreachable targets leave the pose unchanged. Returns accepted motion; poll get_state until stopped. Disabled in servo mode.", ["x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm.")], required: ["x_mm", "y_mm", "z_mm"]),
+        tool("rebot_move_to_pose", "Cartesian IK with optional keep_level (tool/cube top within 5° of world vertical). Position in mm. Unreachable targets leave the pose unchanged. Disabled in servo mode.", [
+            "x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm."),
+            "roll_deg": number("Optional tool roll in degrees."), "pitch_deg": number("Optional tool pitch in degrees."),
+            "yaw_deg": number("Optional tool yaw in degrees."), "keep_level": ["type": "boolean", "description": "Constrain the tool or attached cube to stay level with the ground."]
+        ], required: ["x_mm", "y_mm", "z_mm"]),
+        tool("rebot_set_cube", "Place, resize, hide, or drop the kinematic scene cube. Omitted fields stay unchanged. Centers are mm in the robot base frame. Rejects poses through the floor.", [
+            "x_mm": number("Cube center X in mm."), "y_mm": number("Cube center Y in mm."), "z_mm": number("Cube center Z in mm."),
+            "size_mm": number("Cube edge length in mm (5–120).", min: 5, max: 120),
+            "yaw_deg": number("Yaw about world Z in degrees."),
+            "present": ["type": "boolean", "description": "False hides the cube."],
+            "attached": ["type": "boolean", "description": "False forces a drop onto the plane."]
+        ]),
+        tool("rebot_capture_view", "JPEG of the RealityKit scene camera (not window chrome). Default 320×240, max 640×480. Optional camera does not steal the user view unless apply is true.", [
+            "camera": ["type": "string", "enum": ["Orbit", "Front", "Top"]],
+            "width": number("Image width in pixels.", min: 64, max: 640),
+            "height": number("Image height in pixels.", min: 64, max: 480),
+            "apply": ["type": "boolean", "description": "If true, switch the live camera to the captured preset."]
+        ]),
+        tool("rebot_set_control_mode", "scripted uses quintic MCP pose tools. servo applies immediate slider-style updates via rebot_servo_joints / rebot_servo_tcp.", [
+            "mode": ["type": "string", "enum": ["scripted", "servo"]]
+        ], required: ["mode"]),
+        tool("rebot_servo_joints", "Immediate floor-limited joint/gripper update. Requires servo mode. Last command wins; no MotionPlayer.", [
+            "joints_deg": ["type": "array", "items": ["type": "number"], "minItems": 6, "maxItems": 6],
+            "gripper_mm": number("Optional gripper opening.", min: 0, max: 90)
+        ]),
+        tool("rebot_servo_tcp", "Immediate IK from the current pose. Requires servo mode. keep_level matches rebot_move_to_pose.", [
+            "x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm."),
+            "keep_level": ["type": "boolean", "description": "Keep the tool or attached cube level."]
+        ], required: ["x_mm", "y_mm", "z_mm"]),
         tool("rebot_apply_preset", "Smoothly move to a preset. Folded also closes the gripper; other presets preserve opening.", ["name": ["type": "string", "enum": ["Folded", "Ready", "Reach", "Upright"]]], required: ["name"]),
         tool("rebot_playback", "Control simulator playback. play starts the sequence; resume continues paused motion. stop holds the current pose. reset immediately returns to folded startup and clears the trace, preserving the sequence.", ["action": ["type": "string", "enum": ["play", "pause", "resume", "stop", "reset"]]], required: ["action"]),
         tool("rebot_set_speed", "Set sequence playback speed. Single-pose moves use the simulator's nominal 60 degrees/second peak limit.", ["percent": number("Sequence speed percentage.", min: 10, max: 100)], required: ["percent"]),

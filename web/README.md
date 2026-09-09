@@ -22,7 +22,7 @@ Open the URL printed by the development server. Build for deployment with `npm r
 - Record the current pose, remove waypoints, or play the sample sequence. Playback uses quintic interpolation with a nominal maximum joint speed of 60 degrees/s at 100% playback speed. Pause/resume preserves progress; Stop or Escape stops at the current pose. Reset immediately restores the ready pose.
 - Export a sequence as JSON. Poses remain in memory until the page reloads. The file is a simulator interchange format, not a hardware control program.
 
-The simulator models forward and inverse kinematics. It enforces solid base-plane contact for every moving link and both gripper fingertips. Manual controls stop at first contact and reverse immediately; presets and sequences stop before crossing the plane. It does not calculate self-collisions, contact with other objects, dynamics, gravity, torque, payload behavior, or physical grasping. It has no hardware connection.
+The simulator models forward and inverse kinematics. It enforces solid base-plane contact for every moving link and both gripper fingertips. Manual controls stop at first contact and reverse immediately; presets and sequences stop before crossing the plane. A 40 mm cube is drawn on the floor for visual parity with the native app; the browser build does not attach, grasp, or expose MCP. It does not calculate self-collisions, contact with other objects, dynamics, gravity, torque, payload behavior, or physical grasping. It has no hardware connection.
 
 ## Model provenance
 

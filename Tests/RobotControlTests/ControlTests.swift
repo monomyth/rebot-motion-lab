@@ -28,7 +28,7 @@ struct ControlTests {
         let server = MCPProtocol { name, _ in ["tool": name, "joints_deg": [0,0,0,0,0,0]] }
         try ready(server)
         let list = server.handle(try request("tools/list"))!["result"] as! [String: Any]
-        #expect((list["tools"] as? [[String: Any]])?.count == 12)
+        #expect((list["tools"] as? [[String: Any]])?.count == 18)
         let result = server.handle(try request("tools/call", ["name": "rebot_get_state"]))!["result"] as! [String: Any]
         #expect(result["isError"] as? Bool == false)
         #expect((result["structuredContent"] as? [String: Any])?["tool"] as? String == "rebot_get_state")
@@ -53,6 +53,10 @@ struct ControlTests {
         for (name, args) in bad { #expect(throws: ControlError.self) { try ControlCatalog.validate(args, for: name) } }
         try ControlCatalog.validate(["joint": 1, "angle_deg": 30.0], for: "rebot_set_joint")
         try ControlCatalog.validate(["grid": true, "camera": "Front"], for: "rebot_set_view")
+        try ControlCatalog.validate(["x_mm": 280.0, "y_mm": 0.0, "z_mm": 20.0, "keep_level": true], for: "rebot_move_to_pose")
+        try ControlCatalog.validate(["present": true, "size_mm": 40.0], for: "rebot_set_cube")
+        try ControlCatalog.validate(["mode": "servo"], for: "rebot_set_control_mode")
+        #expect(throws: ControlError.self) { try ControlCatalog.validate(["mode": "fly"], for: "rebot_set_control_mode") }
     }
     @Test func rejectedArgumentsNeverReachBackend() throws {
         var count = 0

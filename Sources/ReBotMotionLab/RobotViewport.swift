@@ -19,6 +19,7 @@ struct RobotScene: NSViewRepresentable {
         do {
             try view.configure(robot: model.robot)
             view.applyPose(model.current)
+            view.syncCube(model.cube)
             view.setActive(true)
             DispatchQueue.main.async { model.sceneReady = true }
         } catch { DispatchQueue.main.async { model.sceneError = "The bundled 3D model could not load: \(error.localizedDescription)" } }
@@ -47,7 +48,8 @@ struct RobotScene: NSViewRepresentable {
     private var lastTracePoint: SIMD3<Float>?
     private var cameraRevision = -1, traceRevision = -1
     private var azimuth: Float = -0.9887, elevation: Float = 0.38, distance: Float = 2.04
-    private var target: SIMD3<Float> = [0.06, 0, 0.30]
+    private var target: SIMD3<Float> = [0.18, 0, 0.22]
+    private var cubeEntity: ModelEntity?
     private let lineMesh = MeshResource.generateBox(size: 1)
     private let trailMaterial = UnlitMaterial(color: NSColor(red: 0.76, green: 0.91, blue: 0.35, alpha: 1))
 
@@ -100,6 +102,14 @@ struct RobotScene: NSViewRepresentable {
         world.addChild(rim)
         let floor = ModelEntity(mesh: .generateBox(size: [4, 4, 0.002]), materials: [SimpleMaterial(color: NSColor(red: 0.14, green: 0.18, blue: 0.15, alpha: 1), roughness: 1, isMetallic: false)])
         floor.position.z = -0.002; world.addChild(floor)
+        let cube = ModelEntity(
+            mesh: .generateBox(size: 0.04),
+            materials: [SimpleMaterial(color: NSColor(srgbRed: 0.77, green: 0.36, blue: 0.15, alpha: 1), roughness: 0.45, isMetallic: false)]
+        )
+        cube.name = "scene_cube"
+        world.addChild(cube)
+        cubeEntity = cube
+        if let owner { syncCube(owner.cube) }
         let gridColor = UnlitMaterial(color: NSColor(red: 0.24, green: 0.31, blue: 0.25, alpha: 1))
         var gridLines: [(SIMD3<Float>, SIMD3<Float>)] = []
         for i in -12...12 {
@@ -168,14 +178,76 @@ struct RobotScene: NSViewRepresentable {
         previousTrace = state.showTrace
         if state.showTrace, lastTracePoint == nil { appendTrace(SIMD3<Float>(robot!.position(state.current.joints))) }
         if cameraRevision != state.cameraRevision {
-            cameraRevision = state.cameraRevision; target = [0.06, 0, 0.30]
-            switch state.camera {
-            case "Front": azimuth = -.pi / 2; elevation = 0.065; distance = 1.85
-            case "Top": azimuth = -.pi / 2; elevation = .pi / 2 - 0.001; distance = 1.65
-            default: azimuth = -0.9887; elevation = 0.38; distance = 2.04
-            }
-            updateCamera()
+            cameraRevision = state.cameraRevision
+            applyCameraPreset(state.camera)
         }
+        syncCube(state.cube)
+    }
+    func applyCameraPreset(_ name: String) {
+        target = [0.18, 0, 0.22]
+        switch name {
+        case "Front": azimuth = -.pi / 2; elevation = 0.12; distance = 1.55
+        case "Top": azimuth = -.pi / 2; elevation = .pi / 2 - 0.001; distance = 1.45
+        default: azimuth = -0.9887; elevation = 0.38; distance = 2.04
+        }
+        updateCamera()
+    }
+    func syncCube(_ cube: CubeState) {
+        guard let cubeEntity else { return }
+        cubeEntity.isEnabled = cube.present
+        cubeEntity.scale = SIMD3<Float>(cube.size / 0.04)
+        let pose = cube.worldMatrix
+        if cube.attached, let end = linkEntities["end_link"] {
+            if cubeEntity.parent !== end { end.addChild(cubeEntity) }
+            cubeEntity.transform = Transform(matrix: floatMatrix(cube.attachLocal))
+        } else {
+            if cubeEntity.parent !== self.world { self.world.addChild(cubeEntity) }
+            cubeEntity.transform = Transform(matrix: floatMatrix(pose))
+        }
+    }
+    func captureJPEG(camera: String?, apply: Bool, width: Int, height: Int) -> (data: Data, cubeInView: Bool, tcpInView: Bool)? {
+        let saved = (azimuth, elevation, distance, target)
+        if let camera { applyCameraPreset(camera) }
+        layoutSubtreeIfNeeded()
+        displayIfNeeded()
+        let rect = bounds
+        guard rect.width > 2, rect.height > 2, let rep = bitmapImageRepForCachingDisplay(in: rect) else {
+            if !apply { (azimuth, elevation, distance, target) = saved; updateCamera() }
+            return nil
+        }
+        cacheDisplay(in: rect, to: rep)
+        if !apply { (azimuth, elevation, distance, target) = saved; updateCamera() }
+        else if let camera { owner?.resetCamera(camera) }
+        let jpeg = scaledJPEG(rep, width: width, height: height) ?? rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
+        guard let jpeg else { return nil }
+        let cube = owner?.cube.center ?? CubeState.defaultCenter
+        let tcpMM = owner?.tcp ?? .zero
+        return (jpeg, projectedInView(float3(cube)), projectedInView(float3(tcpMM / 1000)))
+    }
+    private func scaledJPEG(_ rep: NSBitmapImageRep, width: Int, height: Int) -> Data? {
+        let image = NSImage(size: NSSize(width: width, height: height))
+        image.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .medium
+        rep.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        image.unlockFocus()
+        guard let out = NSBitmapImageRep(data: image.tiffRepresentation ?? Data()) else { return nil }
+        return out.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
+    }
+    private func projectedInView(_ worldPoint: SIMD3<Float>) -> Bool {
+        let cam = cameraEntity.position(relativeTo: world)
+        let forward = cameraEntity.orientation.act(SIMD3<Float>(0, 0, -1))
+        let offset = worldPoint - cam
+        let depth = simd_dot(offset, forward)
+        guard depth > 0.01 else { return false }
+        let fov = cameraEntity.camera.fieldOfViewInDegrees * .pi / 180
+        let aspect = Float(max(bounds.width / max(bounds.height, 1), 0.1))
+        let right = cameraEntity.orientation.act(SIMD3<Float>(1, 0, 0))
+        let up = cameraEntity.orientation.act(SIMD3<Float>(0, 1, 0))
+        let x = simd_dot(offset, right) / depth
+        let y = simd_dot(offset, up) / depth
+        let halfY = tan(fov / 2)
+        let halfX = halfY * aspect
+        return abs(x) <= halfX * 1.15 && abs(y) <= halfY * 1.15
     }
     func updateCamera() {
         let offset = SIMD3<Float>(cos(azimuth) * cos(elevation), sin(azimuth) * cos(elevation), sin(elevation)) * distance
@@ -207,3 +279,4 @@ struct RobotScene: NSViewRepresentable {
 func floatMatrix(_ m: simd_double4x4) -> simd_float4x4 {
     simd_float4x4(columns: (SIMD4<Float>(m.columns.0), SIMD4<Float>(m.columns.1), SIMD4<Float>(m.columns.2), SIMD4<Float>(m.columns.3)))
 }
+func float3(_ v: SIMD3<Double>) -> SIMD3<Float> { SIMD3(Float(v.x), Float(v.y), Float(v.z)) }

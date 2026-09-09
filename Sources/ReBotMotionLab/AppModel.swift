@@ -20,12 +20,19 @@ typealias PlaybackState = MotionPlayer.State
     }
 }
 
+enum ControlMode: String {
+    case scripted, servo
+}
+
 @MainActor final class MotionReadout: ObservableObject {
     @Published private(set) var pose = Pose.startup
     private(set) var tcp = SIMD3<Double>(repeating: 0)
+    private(set) var rpy = SIMD3<Double>(repeating: 0)
+    private(set) var tcpLevel = false
+    private(set) var cube = CubeState.spawn
     private(set) var progress = 0.0
-    func update(pose: Pose, tcp: SIMD3<Double>, progress: Double) {
-        self.tcp = tcp; self.progress = progress; self.pose = pose
+    func update(pose: Pose, tcp: SIMD3<Double>, rpy: SIMD3<Double>, tcpLevel: Bool, cube: CubeState, progress: Double) {
+        self.tcp = tcp; self.rpy = rpy; self.tcpLevel = tcpLevel; self.cube = cube; self.progress = progress; self.pose = pose
     }
 }
 
@@ -38,6 +45,7 @@ typealias PlaybackState = MotionPlayer.State
             if page != .simulator {
                 if playback == .playing { pause(); status = "Playback paused" }
                 if manualMoving { setManualTracking(false) }
+                if controlMode == .servo { exitServo() }
             }
         }
     }
@@ -58,6 +66,9 @@ typealias PlaybackState = MotionPlayer.State
     @Published var targetX = 542.9
     @Published var targetY = 0.0
     @Published var targetZ = 409.3
+    @Published var keepLevel = true
+    @Published private(set) var controlMode: ControlMode = .scripted
+    private(set) var cube = CubeState.spawn
     @Published var status = "Folded startup position · Select Ready to unfold"
     @Published var error: String?
     @Published var sceneReady = false
@@ -77,7 +88,10 @@ typealias PlaybackState = MotionPlayer.State
     private var isSequence = true
     private var completionStatus = "Sequence complete"
     var tcp: SIMD3<Double> { robot.position(current.joints) * 1000 }
+    var tcpRPY: SIMD3<Double> { robot.rpy(current.joints) * (180 / .pi) }
+    var tcpLevel: Bool { robot.isLevel(current.joints, cubeTop: cube.attached ? cube.topNormal : nil) }
     var controlsLocked: Bool { playback != .stopped }
+    var scriptedLocked: Bool { controlsLocked || controlMode == .servo }
     var hasMotion: Bool { controlsLocked || manualMoving }
 
     init() throws {
@@ -87,13 +101,21 @@ typealias PlaybackState = MotionPlayer.State
         publishReadout(); useCurrentTarget()
         mcpControl.attach(self)
     }
-    private func apply(_ pose: Pose, immediately: Bool) {
+    private func commit(_ pose: Pose, previousGrip: Double, immediately: Bool) {
         current = pose
-        viewport?.applyPose(pose)
+        let end = robot.endLink(current.joints, grip: current.grip)
+        Grasp.update(previousGrip: previousGrip, pose: current, cube: &cube, endLink: end)
+        viewport?.applyPose(current)
+        viewport?.syncCube(cube)
         if immediately { publishReadout() }
     }
+    private func apply(_ pose: Pose, immediately: Bool) {
+        let previousGrip = current.grip
+        let allowed = floor.limited(from: current, to: pose, cube: cube)
+        commit(allowed, previousGrip: previousGrip, immediately: immediately)
+    }
     private func publishReadout() {
-        telemetry.update(pose: current, tcp: tcp, progress: progress)
+        telemetry.update(pose: current, tcp: tcp, rpy: tcpRPY, tcpLevel: tcpLevel, cube: cube, progress: progress)
         poseControls.update(current)
         readoutElapsed = 0
         lastReadoutTime = ProcessInfo.processInfo.systemUptime
@@ -105,12 +127,12 @@ typealias PlaybackState = MotionPlayer.State
         else { publishReadout() }
     }
     private func applyInteractive(_ pose: Pose) {
-        current = pose
-        viewport?.applyPose(pose)
-        poseControls.update(pose)
+        let previousGrip = current.grip
+        commit(pose, previousGrip: previousGrip, immediately: false)
+        poseControls.update(current)
         let now = ProcessInfo.processInfo.systemUptime
         if now - lastReadoutTime >= 1.0 / 15 {
-            telemetry.update(pose: current, tcp: tcp, progress: progress)
+            telemetry.update(pose: current, tcp: tcp, rpy: tcpRPY, tcpLevel: tcpLevel, cube: cube, progress: progress)
             lastReadoutTime = now
         }
     }
@@ -120,29 +142,29 @@ typealias PlaybackState = MotionPlayer.State
         var pose = current
         pose.joints[index] = value
         pose.joints = robot.clampPose(pose.joints)
-        applyInteractive(floor.limited(from: current, to: pose))
+        applyInteractive(floor.limited(from: current, to: pose, cube: cube))
         return current.joints[index]
     }
     @discardableResult func setGrip(_ value: Double) -> Double {
         guard !controlsLocked, value.isFinite else { return current.grip }
         var pose = current
         pose.grip = clamp(value, 0, 90)
-        applyInteractive(floor.limited(from: current, to: pose))
+        applyInteractive(floor.limited(from: current, to: pose, cube: cube))
         return current.grip
     }
     func setPose(_ pose: Pose) {
         guard !controlsLocked else { return }
         setManualTracking(false)
         let target = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
-        let allowed = floor.limited(from: current, to: target)
+        let allowed = floor.limited(from: current, to: target, cube: cube)
         apply(allowed, immediately: true)
         status = allowed.joints == target.joints && allowed.grip == target.grip ? "\(pose.name) pose" : "Stopped at base plane"
     }
     func moveToPose(_ pose: Pose, completion: String? = nil) {
-        guard !controlsLocked else { return }
+        guard !scriptedLocked else { return }
         setManualTracking(false)
         let requested = Pose(name: pose.name, joints: robot.clampPose(pose.joints), grip: clamp(pose.grip, 0, 90))
-        let bounded = floor.limited(from: current, to: requested)
+        let bounded = floor.limited(from: current, to: requested, cube: cube)
         let hitFloor = bounded.joints != requested.joints || bounded.grip != requested.grip
         completionStatus = hitFloor ? "Stopped at base plane · Move away to continue" : (completion ?? "\(pose.name) pose reached")
         if bounded.joints == current.joints && bounded.grip == current.grip { status = completionStatus; publishReadout(); return }
@@ -151,17 +173,24 @@ typealias PlaybackState = MotionPlayer.State
         status = "Moving to \(pose.name)"; publishReadout()
     }
     func reset() {
-        stop(); apply(.startup, immediately: true)
+        stop(); controlMode = .scripted
+        cube.restoreSpawn()
+        apply(.startup, immediately: true)
+        viewport?.syncCube(cube)
         resetCamera("Orbit"); traceRevision += 1; useCurrentTarget(); status = "Reset to folded startup position"
     }
     func resetCamera(_ name: String) { camera = name; cameraRevision += 1 }
     func useCurrentTarget() { let p = tcp; targetX = p.x; targetY = p.y; targetZ = p.z }
     func solve() {
-        guard !controlsLocked else { return }
-        let result = robot.solve(target: SIMD3(targetX, targetY, targetZ) / 1000, initial: current.joints)
+        guard !scriptedLocked else { return }
+        let result = robot.solve(
+            target: SIMD3(targetX, targetY, targetZ) / 1000, initial: current.joints,
+            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(cube)
+        )
         if result.success {
-            moveToPose(Pose(name: "target", joints: result.joints, grip: current.grip), completion: String(format: "Target reached · %.2f mm error", result.error * 1000))
-        } else { status = "No solution within 2 mm from this pose. Try a closer target or another starting pose." }
+            let note = keepLevel ? " · level" : ""
+            moveToPose(Pose(name: "target", joints: result.joints, grip: current.grip), completion: String(format: "Target reached · %.2f mm error%@", result.error * 1000, note))
+        } else { status = keepLevel ? "No level solution within 2 mm / 5°. The pose was preserved." : "No solution within 2 mm from this pose. Try a closer target or another starting pose." }
     }
     func addWaypoint() {
         guard !controlsLocked else { return }
@@ -173,12 +202,12 @@ typealias PlaybackState = MotionPlayer.State
         page = .simulator
         if playback == .playing { pause(); status = "Playback paused"; return }
         if playback == .paused { player.resume(); playback = .playing; status = "Playback resumed"; return }
-        guard !waypoints.isEmpty else { return }
+        guard !waypoints.isEmpty, controlMode == .scripted else { return }
         setManualTracking(false)
         isSequence = true; completionStatus = "Sequence complete"
         var route = [Pose](), from = current
         for target in waypoints {
-            let allowed = floor.limited(from: from, to: target)
+            let allowed = floor.limited(from: from, to: target, cube: cube)
             route.append(allowed)
             if allowed.joints != target.joints || allowed.grip != target.grip {
                 completionStatus = "Stopped at base plane · Move away to continue"
@@ -206,7 +235,31 @@ typealias PlaybackState = MotionPlayer.State
     func stop() {
         setManualTracking(false)
         player.stop(); playback = .stopped; activeWaypoint = nil; progress = 0
-        status = "Motion stopped"; publishReadout()
+        status = controlMode == .servo ? "Servo mode" : "Motion stopped"; publishReadout()
+    }
+    func enterServo() {
+        stop(); setManualTracking(false); controlMode = .servo; page = .simulator; status = "Servo mode"; publishReadout()
+    }
+    func exitServo() {
+        controlMode = .scripted
+        if playback != .stopped { stop() }
+        status = "Scripted mode"; publishReadout()
+    }
+    @discardableResult func servoTo(_ pose: Pose) -> Pose {
+        guard controlMode == .servo, !manualMoving else { return current }
+        setManualTracking(false)
+        apply(pose, immediately: true)
+        return current
+    }
+    func applyCube(_ next: CubeState) {
+        cube = next
+        if cube.attached {
+            cube = Grasp.aligned(cube, endLink: robot.endLink(current.joints, grip: current.grip))
+        } else {
+            cube.restOnFloor()
+        }
+        viewport?.syncCube(cube)
+        publishReadout()
     }
     func exportTrajectory() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "B601-DM-trajectory.json"

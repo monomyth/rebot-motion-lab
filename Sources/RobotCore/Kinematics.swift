@@ -51,11 +51,29 @@ public struct Kinematics: Sendable {
         }
         return links
     }
-    public func position(_ joints: [Double]) -> SIMD3<Double> {
-        let p = transforms(joints)["end_link"]!.columns.3
-        return SIMD3(p.x, p.y, p.z)
+    public func endLink(_ joints: [Double], grip: Double = 60) -> simd_double4x4 {
+        transforms(joints, grip: grip)["end_link"]!
     }
-    public struct Solution: Sendable { public let joints: [Double]; public let error: Double; public var success: Bool { error < 0.002 } }
+    public func position(_ joints: [Double]) -> SIMD3<Double> {
+        translation(endLink(joints))
+    }
+    public func toolZ(_ joints: [Double]) -> SIMD3<Double> {
+        let m = endLink(joints)
+        return SIMD3(m.columns.2.x, m.columns.2.y, m.columns.2.z)
+    }
+    public func rpy(_ joints: [Double]) -> SIMD3<Double> { RobotCore.rpy(from: endLink(joints)) }
+    public func isLevel(_ joints: [Double], cubeTop: SIMD3<Double>? = nil) -> Bool {
+        Grasp.isLevel(toolZ: toolZ(joints), cubeTop: cubeTop)
+    }
+    public struct Solution: Sendable {
+        public let joints: [Double]
+        public let error: Double
+        public let orientationError: Double
+        public init(joints: [Double], error: Double, orientationError: Double = 0) {
+            self.joints = joints; self.error = error; self.orientationError = orientationError
+        }
+        public var success: Bool { error < 0.002 && orientationError < 5 * degreesToRadians }
+    }
     /// Position-only DLS. The returned candidate never mutates the input pose.
     public func solve(target: SIMD3<Double>, initial: [Double], iterations: Int = 300) -> Solution {
         var q = clampPose(initial)
@@ -74,5 +92,86 @@ public struct Kinematics: Sendable {
             q = clampPose(q.enumerated().map { i, v in v + clamp(simd_dot(jacobian[i], step), -0.12, 0.12) / degreesToRadians })
         }
         return Solution(joints: q, error: simd_distance(position(q), target))
+    }
+    /// Level constraint: unattached tool +Z toward world −Z, or attached cube top toward world +Z.
+    public func solve(target: SIMD3<Double>, initial: [Double], keepLevel: Bool, cubeTopInTool: SIMD3<Double>?, iterations: Int = 400) -> Solution {
+        if !keepLevel { return solve(target: target, initial: initial, iterations: iterations) }
+        let positioned = solve(target: target, initial: initial, iterations: iterations)
+        var q = positioned.joints
+        guard target.x.isFinite, target.y.isFinite, target.z.isFinite else {
+            return Solution(joints: q, error: .infinity, orientationError: .infinity)
+        }
+        let oriWeight = 0.04
+        for _ in 0..<max(0, iterations) {
+            let residual = levelResidual(q, target: target, cubeTopInTool: cubeTopInTool)
+            let pos = SIMD3(residual[0], residual[1], residual[2])
+            let ori = SIMD3(residual[3], residual[4], residual[5])
+            if simd_length(pos) < 0.001, simd_length(ori) < 0.03 { break }
+            var J = Array(repeating: Array(repeating: 0.0, count: 6), count: 6)
+            for i in 0..<6 {
+                let h = q[i] + 0.01 <= definition.armJoints[i].upper / degreesToRadians ? 0.01 : -0.01
+                var trial = q; trial[i] += h
+                let n = levelResidual(trial, target: target, cubeTopInTool: cubeTopInTool)
+                let scale = 1 / (h * degreesToRadians)
+                for r in 0..<6 { J[r][i] = (n[r] - residual[r]) * scale }
+            }
+            let step = dampedStep(J, residual, oriWeight: oriWeight)
+            q = clampPose(q.enumerated().map { i, v in v - clamp(step[i], -0.12, 0.12) / degreesToRadians })
+        }
+        let final = levelResidual(q, target: target, cubeTopInTool: cubeTopInTool)
+        return Solution(
+            joints: q,
+            error: simd_length(SIMD3(final[0], final[1], final[2])),
+            orientationError: simd_length(SIMD3(final[3], final[4], final[5]))
+        )
+    }
+    private func levelResidual(_ q: [Double], target: SIMD3<Double>, cubeTopInTool: SIMD3<Double>?) -> [Double] {
+        let T = endLink(q)
+        let pos = translation(T) - target
+        let ori: SIMD3<Double>
+        if let local = cubeTopInTool {
+            let top = simd_normalize(rotation(T) * local)
+            ori = simd_cross(top, SIMD3(0, 0, 1))
+        } else {
+            ori = simd_cross(simd_normalize(toolZ(q)), SIMD3(0, 0, -1))
+        }
+        return [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z]
+    }
+    private func dampedStep(_ J: [[Double]], _ residual: [Double], oriWeight: Double) -> [Double] {
+        var A = Array(repeating: Array(repeating: 0.0, count: 6), count: 6)
+        var b = Array(repeating: 0.0, count: 6)
+        let w = [1.0, 1.0, 1.0, oriWeight, oriWeight, oriWeight]
+        for i in 0..<6 {
+            A[i][i] = 0.0004
+            for k in 0..<6 {
+                let wk = w[k]
+                b[i] += J[k][i] * residual[k] * wk
+                for j in 0..<6 { A[i][j] += J[k][i] * J[k][j] * wk }
+            }
+        }
+        return solveLinear6(A, b)
+    }
+    private func solveLinear6(_ matrix: [[Double]], _ vector: [Double]) -> [Double] {
+        var a = matrix
+        var x = vector
+        for i in 0..<6 {
+            var pivot = i
+            for r in (i + 1)..<6 where abs(a[r][i]) > abs(a[pivot][i]) { pivot = r }
+            a.swapAt(i, pivot); x.swapAt(i, pivot)
+            let d = a[i][i]
+            if abs(d) < 1e-12 { continue }
+            for r in (i + 1)..<6 {
+                let f = a[r][i] / d
+                for c in i..<6 { a[r][c] -= f * a[i][c] }
+                x[r] -= f * x[i]
+            }
+        }
+        var q = Array(repeating: 0.0, count: 6)
+        for i in stride(from: 5, through: 0, by: -1) {
+            var s = x[i]
+            for c in (i + 1)..<6 { s -= a[i][c] * q[c] }
+            q[i] = abs(a[i][i]) < 1e-12 ? 0 : s / a[i][i]
+        }
+        return q
     }
 }
