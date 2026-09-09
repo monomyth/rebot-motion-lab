@@ -13,6 +13,15 @@ struct GraspTests {
         robot.solve(target: SIMD3(0.28, 0, z), initial: initial, keepLevel: true, cubeTopInTool: nil)
     }
 
+    private func padPick(_ robot: Kinematics) throws -> Kinematics.Solution {
+        let above = levelPick(robot, z: 0.048)
+        #expect(above.success)
+        let target = Grasp.padGraspTCP(CubeState.spawn, toolX: robot.toolX(above.joints), toolZ: robot.toolZ(above.joints))
+        let grasp = robot.solve(target: target, initial: above.joints, keepLevel: true, cubeTopInTool: nil)
+        #expect(grasp.success, "pad grasp IK \(grasp.error) ori \(grasp.orientationError)")
+        return grasp
+    }
+
     @Test func keepLevelPickReachesTheCube() throws {
         let (robot, floor) = try setup()
         let solved = levelPick(robot, z: 0.048)
@@ -25,26 +34,26 @@ struct GraspTests {
 
     @Test func pinchDoesNotPutPadsInsideTheCube() throws {
         let (robot, floor) = try setup()
-        let solved = levelPick(robot, z: 0.048)
-        #expect(solved.success)
+        let solved = try padPick(robot)
         var cube = CubeState.spawn
-        let end = robot.endLink(solved.joints, grip: 60)
-        let pinch = Grasp.attachOpeningMM(cube, endLink: end)
-        let close = Pose(name: "close", joints: solved.joints, grip: pinch)
-        Grasp.update(previousGrip: 60, pose: close, cube: &cube, endLink: robot.endLink(solved.joints, grip: pinch))
+        let from = Pose(name: "open", joints: solved.joints, grip: 60)
+        var requested = from; requested.grip = 20
+        let stopped = floor.limited(from: from, to: requested, cube: cube)
+        Grasp.update(previousGrip: 60, pose: stopped, cube: &cube, endLink: robot.endLink(stopped.joints, grip: stopped.grip))
         #expect(cube.attached)
         #expect(abs(cube.yaw) < 1e-6)
-        let links = robot.transforms(solved.joints, grip: pinch)
-        #expect(Grasp.padPenetration(cube: cube, leftFinger: links["finger_left_link"]!, rightFinger: links["finger_right_link"]!) < 0.003)
-        var crush = close
+        let links = robot.transforms(stopped.joints, grip: stopped.grip)
+        let pen = Grasp.padPenetration(cube: cube, leftFinger: links["finger_left_link"]!, rightFinger: links["finger_right_link"]!)
+        #expect(pen < 0.002)
+        #expect(stopped.grip < 59)
+        var crush = stopped
         crush.grip = 20
-        #expect(!floor.isAllowed(crush, cube: CubeState.spawn) || Grasp.padPenetration(cube: CubeState.spawn, leftFinger: robot.transforms(solved.joints, grip: 20)["finger_left_link"]!, rightFinger: robot.transforms(solved.joints, grip: 20)["finger_right_link"]!) > 0.001)
+        #expect(!floor.isAllowed(crush, cube: CubeState.spawn))
     }
 
     @Test func pinchAtCubeWidthAttachesAndLiftMovesCube() throws {
         let (robot, _) = try setup()
-        let solved = levelPick(robot, z: 0.048)
-        #expect(solved.success)
+        let solved = try padPick(robot)
         var cube = CubeState.spawn
         let pinch = Grasp.attachOpeningMM(cube, endLink: robot.endLink(solved.joints, grip: 60))
         Grasp.update(previousGrip: 60, pose: Pose(name: "close", joints: solved.joints, grip: pinch), cube: &cube, endLink: robot.endLink(solved.joints, grip: pinch))
@@ -59,8 +68,7 @@ struct GraspTests {
 
     @Test func openAfterLiftReleasesWithoutSnapping() throws {
         let (robot, _) = try setup()
-        let solved = levelPick(robot, z: 0.048)
-        #expect(solved.success)
+        let solved = try padPick(robot)
         var cube = CubeState.spawn
         let pinch = Grasp.attachOpeningMM(cube, endLink: robot.endLink(solved.joints, grip: 60))
         Grasp.update(previousGrip: 60, pose: Pose(name: "c", joints: solved.joints, grip: pinch), cube: &cube, endLink: robot.endLink(solved.joints, grip: pinch))
@@ -84,8 +92,7 @@ struct GraspTests {
 
     @Test func liftingHeldCubeOffTheFloorIsAllowed() throws {
         let (robot, floor) = try setup()
-        let solved = levelPick(robot, z: 0.048)
-        #expect(solved.success)
+        let solved = try padPick(robot)
         var cube = CubeState.spawn
         let pinch = Grasp.attachOpeningMM(cube, endLink: robot.endLink(solved.joints, grip: 60))
         Grasp.update(previousGrip: 60, pose: Pose(name: "c", joints: solved.joints, grip: pinch), cube: &cube, endLink: robot.endLink(solved.joints, grip: pinch))

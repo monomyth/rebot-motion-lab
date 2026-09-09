@@ -25,9 +25,16 @@ public enum Grasp {
         let u = axis / n
         return (abs(u.x) * cube.size.x + abs(u.y) * cube.size.y + abs(u.z) * cube.size.z) * 1000
     }
-    public static func attachOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { projectedWidthMM(cube, endLink: endLink) + 2 }
+    public static func attachOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { projectedWidthMM(cube, endLink: endLink) + 0.5 }
     public static func releaseOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { projectedWidthMM(cube, endLink: endLink) + 12 }
-    public static func minimumOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { max(0, projectedWidthMM(cube, endLink: endLink) - 2) }
+    public static func minimumOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { max(0, projectedWidthMM(cube, endLink: endLink) - 1) }
+
+    /// TCP that puts the cube in the pad length (not at the fingertips).
+    public static func padGraspTCP(_ cube: CubeState, toolX: SIMD3<Double>, toolZ: SIMD3<Double>, depth: Double = 0.035, height: Double = 0.048) -> SIMD3<Double> {
+        let x = simd_normalize(toolX)
+        let z = simd_normalize(toolZ)
+        return cube.center + x * depth + z * (height - cube.center.z)
+    }
 
     public static func clampedGrip(_ requested: Double, cube: CubeState, endLink: simd_double4x4) -> Double {
         let grip = clamp(requested, 0, 90)

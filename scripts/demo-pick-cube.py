@@ -2,6 +2,7 @@
 """Drive ReBotMCP: pick the default cube, hold 5 seconds, release."""
 import base64
 import json
+import math
 import os
 import selectors
 import subprocess
@@ -121,10 +122,17 @@ def main():
         # horizontal plane. z=48 mm sits the pads on the cube without putting
         # the wrist through the floor. Pinch at cube width, not 20 mm.
         client.call("rebot_move_to_pose", {"x_mm": cx, "y_mm": cy, "z_mm": 48, "keep_level": True})
+        above = client.wait_stopped()
+        yaw = math.radians(above.get("tcp_rpy_deg", {}).get("yaw", 0))
+        # Shift TCP along tool +X so the cube sits in the pad length, not at the tips.
+        depth = 35
+        gx = cx + depth * math.cos(yaw)
+        gy = cy + depth * math.sin(yaw)
+        client.call("rebot_move_to_pose", {"x_mm": gx, "y_mm": gy, "z_mm": 48, "keep_level": True})
         approach = client.wait_stopped()
         log.append({"step": "approach", "tcp_mm": approach["tcp_mm"], "attached": cube(approach)["attached"], "min_mm": approach["floor"]["minimum_robot_height_mm"], "tcp_level": approach.get("tcp_level"), "photo": capture(client, captures, "01-approach")})
 
-        # Close until the pads meet the cube. Do not yaw the cube to fake alignment.
+        # Close until the pads meet the cube. Do not yaw the cube.
         client.call("rebot_set_gripper", {"opening_mm": 20})
         grabbed = client.wait_stopped()
         log.append({"step": "close", "attached": cube(grabbed)["attached"], "gripper_mm": grabbed["gripper_mm"], "tcp_mm": grabbed["tcp_mm"], "photo": capture(client, captures, "02-pinch")})
