@@ -42,7 +42,7 @@ public struct FloorConstraint: Sendable {
         if cubePenetration(pose, cube: cube) > 0.0005 { return false }
         if let cube, cube.present {
             let end = robot.endLink(pose.joints, grip: pose.grip)
-            if (cube.attached || Grasp.inJaws(cube: cube, endLink: end)), pose.grip + 1e-6 < Grasp.minimumOpeningMM(cube) {
+            if (cube.attached || Grasp.inJaws(cube: cube, endLink: end)), pose.grip + 1e-6 < Grasp.minimumOpeningMM(cube, endLink: end) {
                 return false
             }
         }
@@ -84,7 +84,7 @@ public struct FloorConstraint: Sendable {
         guard let cube, cube.present else { return candidate }
         let end = robot.endLink(from.joints, grip: from.grip)
         guard cube.attached || Grasp.inJaws(cube: cube, endLink: end) else { return candidate }
-        let minimum = Grasp.minimumOpeningMM(cube)
+        let minimum = Grasp.minimumOpeningMM(cube, endLink: end)
         guard candidate.grip + 1e-9 < minimum else { return candidate }
         var pose = candidate
         pose.grip = minimum

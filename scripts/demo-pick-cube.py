@@ -124,11 +124,8 @@ def main():
         approach = client.wait_stopped()
         log.append({"step": "approach", "tcp_mm": approach["tcp_mm"], "attached": cube(approach)["attached"], "min_mm": approach["floor"]["minimum_robot_height_mm"], "tcp_level": approach.get("tcp_level"), "photo": capture(client, captures, "01-approach")})
 
-        # Square the cube to the jaws so pads meet faces, not the diagonal.
-        yaw = approach.get("tcp_rpy_deg", {}).get("yaw", 0)
-        client.call("rebot_set_cube", {"present": True, "x_mm": cx, "y_mm": cy, "z_mm": 20, "size_mm": size, "yaw_deg": yaw})
-        pinch = size + 2
-        client.call("rebot_set_gripper", {"opening_mm": pinch})
+        # Close until the pads meet the cube. Do not yaw the cube to fake alignment.
+        client.call("rebot_set_gripper", {"opening_mm": 20})
         grabbed = client.wait_stopped()
         log.append({"step": "close", "attached": cube(grabbed)["attached"], "gripper_mm": grabbed["gripper_mm"], "tcp_mm": grabbed["tcp_mm"], "photo": capture(client, captures, "02-pinch")})
         if not cube(grabbed)["attached"]:
@@ -147,7 +144,7 @@ def main():
         still = client.call("rebot_get_state")
         log.append({"step": "hold_5s", "attached": cube(still)["attached"], "tcp_mm": still["tcp_mm"], "cube": cube(still), "photo": capture(client, captures, "03-hold")})
 
-        client.call("rebot_set_gripper", {"opening_mm": 60})
+        client.call("rebot_set_gripper", {"opening_mm": 90})
         dropped = client.wait_stopped()
         log.append({"step": "release", "attached": cube(dropped)["attached"], "cube": cube(dropped), "tcp_mm": dropped["tcp_mm"]})
         landed = dropped

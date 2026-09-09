@@ -17,15 +17,23 @@ public enum Grasp {
     public static let rightPadMax = SIMD3(-0.002, -0.0005, 0.020)
 
     public static func cubeWidthMM(_ cube: CubeState) -> Double { cube.size.y * 1000 }
-    public static func attachOpeningMM(_ cube: CubeState) -> Double { cubeWidthMM(cube) + 2 }
-    public static func releaseOpeningMM(_ cube: CubeState) -> Double { cubeWidthMM(cube) + 12 }
-    public static func minimumOpeningMM(_ cube: CubeState) -> Double { max(0, cubeWidthMM(cube) - 2) }
+    /// Width of the cube along the jaw opening (tool +Y), in mm.
+    public static func projectedWidthMM(_ cube: CubeState, endLink: simd_double4x4) -> Double {
+        let axis = SIMD3(endLink.columns.1.x, endLink.columns.1.y, endLink.columns.1.z)
+        let n = simd_length(axis)
+        guard n > 1e-9 else { return cubeWidthMM(cube) }
+        let u = axis / n
+        return (abs(u.x) * cube.size.x + abs(u.y) * cube.size.y + abs(u.z) * cube.size.z) * 1000
+    }
+    public static func attachOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { projectedWidthMM(cube, endLink: endLink) + 2 }
+    public static func releaseOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { projectedWidthMM(cube, endLink: endLink) + 12 }
+    public static func minimumOpeningMM(_ cube: CubeState, endLink: simd_double4x4) -> Double { max(0, projectedWidthMM(cube, endLink: endLink) - 2) }
 
     public static func clampedGrip(_ requested: Double, cube: CubeState, endLink: simd_double4x4) -> Double {
         let grip = clamp(requested, 0, 90)
         guard cube.present else { return grip }
         if cube.attached || inJaws(cube: cube, endLink: endLink) {
-            return max(grip, minimumOpeningMM(cube))
+            return max(grip, minimumOpeningMM(cube, endLink: endLink))
         }
         return grip
     }
@@ -53,7 +61,7 @@ public enum Grasp {
     public static func update(previousGrip: Double, pose: Pose, cube: inout CubeState, endLink: simd_double4x4) {
         guard cube.present else { cube.attached = false; return }
         if cube.attached {
-            if pose.grip >= releaseOpeningMM(cube) {
+            if pose.grip >= releaseOpeningMM(cube, endLink: endLink) {
                 cube = aligned(cube, endLink: endLink)
                 cube.attached = false
                 cube.attachLocal = matrix_identity_double4x4
@@ -65,14 +73,7 @@ public enum Grasp {
             return
         }
         let closing = pose.grip < previousGrip - 1e-9
-        if closing, pose.grip <= attachOpeningMM(cube), pose.grip >= minimumOpeningMM(cube) - 8, inJaws(cube: cube, endLink: endLink) {
-            // Sit cube faces against the pads so a 40 mm cube is not pinched on its diagonal.
-            let opening = SIMD3(endLink.columns.1.x, endLink.columns.1.y, 0)
-            if simd_length(opening) > 1e-6 {
-                let yaw = atan2(opening.y, opening.x) - .pi / 2
-                cube.rotation = simd_quatd(angle: yaw, axis: SIMD3(0, 0, 1))
-                cube.restOnFloor()
-            }
+        if closing, pose.grip <= attachOpeningMM(cube, endLink: endLink), pose.grip >= minimumOpeningMM(cube, endLink: endLink) - 8, inJaws(cube: cube, endLink: endLink) {
             cube.attachLocal = endLink.inverse * cube.worldMatrix
             cube.attached = true
             cube.verticalVelocity = 0
