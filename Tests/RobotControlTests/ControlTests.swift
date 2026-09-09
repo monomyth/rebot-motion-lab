@@ -54,6 +54,7 @@ struct ControlTests {
         try ControlCatalog.validate(["joint": 1, "angle_deg": 30.0], for: "rebot_set_joint")
         try ControlCatalog.validate(["grid": true, "camera": "Front"], for: "rebot_set_view")
         try ControlCatalog.validate(["x_mm": 280.0, "y_mm": 0.0, "z_mm": 20.0, "keep_level": true], for: "rebot_move_to_pose")
+        try ControlCatalog.validate(["x_mm": 280.0, "y_mm": 0.0, "z_mm": 80.0, "fingers_down": true], for: "rebot_move_to_pose")
         try ControlCatalog.validate(["present": true, "size_mm": 40.0], for: "rebot_set_cube")
         try ControlCatalog.validate(["mode": "servo"], for: "rebot_set_control_mode")
         #expect(throws: ControlError.self) { try ControlCatalog.validate(["mode": "fly"], for: "rebot_set_control_mode") }

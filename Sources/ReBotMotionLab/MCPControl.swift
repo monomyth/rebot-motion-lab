@@ -75,7 +75,15 @@ import simd
     private func boundedPose(_ joints: [Double], grip: Double, name: String, model: AppModel) throws -> Pose {
         guard joints.count == 6, joints.allSatisfy(\.isFinite), joints == model.robot.clampPose(joints), grip.isFinite, (0...90).contains(grip) else { throw ControlError("Pose is outside simulator joint/gripper limits. Read rebot_get_state for limits; no motion was started.") }
         let pose = Pose(name: name, joints: joints, grip: grip)
-        guard model.floor.isAllowed(pose, cube: model.cube) else { throw ControlError("Pose intersects the solid base plane, including the gripper fingers. No motion was started.") }
+        guard model.floor.isAllowed(pose, cube: model.cube) else {
+            if model.floor.minimumHeight(pose, cube: model.cube) < FloorConstraint.height {
+                throw ControlError("Pose intersects the solid base plane, including the gripper fingers. No motion was started.")
+            }
+            if model.floor.cubePenetration(pose, cube: model.cube) > 0.0005 {
+                throw ControlError("Pose intersects the scene cube. No motion was started.")
+            }
+            throw ControlError("The gripper would close through the cube. Pinch near the cube width instead. No motion was started.")
+        }
         return pose
     }
     private func requireStopped(_ model: AppModel) throws {
@@ -186,11 +194,16 @@ import simd
     private func moveToPose(_ args: [String: Any], model: AppModel, extra: inout [String: Any]) throws {
         let target = SIMD3(args["x_mm"] as! Double, args["y_mm"] as! Double, args["z_mm"] as! Double)
         let keepLevel = args["keep_level"] as? Bool ?? false
+        let fingersDown = args["fingers_down"] as? Bool ?? false
         let solution = model.robot.solve(
             target: target / 1000, initial: model.current.joints,
-            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(model.cube)
+            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(model.cube),
+            fingersDown: fingersDown
         )
         guard solution.success else {
+            if fingersDown {
+                throw ControlError("No fingers-down IK solution within 2 mm and 5°. The robot pose was preserved.")
+            }
             throw ControlError(keepLevel
                 ? "No level IK solution within 2 mm and 5°. The robot pose was preserved."
                 : "No IK solution within 2 mm from the current pose. The robot pose was preserved.")

@@ -52,7 +52,7 @@ The helper opens its containing app on the first tool call if no simulator is li
 | `rebot_set_joint` | Smoothly change one joint, numbered 1–6. |
 | `rebot_set_gripper` | Set opening from 0 to 90 mm. |
 | `rebot_move_to_position` | Position-only IK using X/Y/Z in mm in the robot base frame. Disabled in servo mode. |
-| `rebot_move_to_pose` | Cartesian IK with optional `keep_level` (tool/cube top within 5° of world vertical). |
+| `rebot_move_to_pose` | Cartesian IK with optional `keep_level` (tool +Z / cube top along world +Z) or `fingers_down`. |
 | `rebot_set_cube` | Place, resize, hide, or drop the kinematic scene cube. Centers in mm. Rejects poses through the floor. |
 | `rebot_capture_view` | JPEG of the RealityKit scene camera (default 320×240, max 640×480). Optional `camera`; `apply: true` switches the live view. |
 | `rebot_set_control_mode` | `scripted` (default quintic MCP) or `servo` (immediate slider-style updates). |
@@ -89,7 +89,9 @@ The MCP client launches ReBotMCP as a subprocess. Its stdout contains only newli
 
 The helper talks to the GUI through a Unix domain socket in a private per-user temporary directory named `rebot-motionlab-grok-<uid>` so it does not share a lock with the original lab. The directory is mode 0700, the socket mode 0600, both ends verify the peer's user ID, and an instance lock prevents two grok-lab apps from taking over the same socket. There is no HTTP listener or external network endpoint. IPC messages are bounded to 1 MiB and have I/O timeouts. If a connection fails after a command was sent, the helper does not retry it automatically; read state before retrying.
 
-These tools operate the **kinematic simulator only**. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips and a **held** scene cube. An unattached cube does not block the arm and falls under gravity onto the plane. Closing the gripper in the fingertip AABB attaches the cube; opening past 40 mm releases it. There is no payload mass or bounce. Neural/fly-brain controllers must live in an external client and drive servo or scripted tools. Targets below the floor are rejected; an obstructed path stops at contact. State includes the cube, `tcp_level`, floor height, and minimum moving-mesh height.
+These tools operate the **kinematic simulator only**. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips and a **held** scene cube. An unattached cube blocks the wrist and arm; the pads stop at about the cube width instead of closing through it. Unattached cubes fall under gravity onto the plane. Closing the gripper around the cube to about the cube width attaches it; opening 12 mm past that width releases it. There is no payload mass or bounce. Neural/fly-brain controllers must live in an external client and drive servo or scripted tools. Targets below the floor are rejected; an obstructed path stops at contact. State includes the cube, `tcp_level`, floor height, and minimum moving-mesh height.
+
+A floor pick that stays clear of the plane: `rebot_move_to_pose` with `keep_level` to the cube XY at about **48 mm**, then `rebot_set_gripper` to cube width + 2 mm, lift with `keep_level`, then open to 60 mm to drop.
 
 Servo workflow: `rebot_set_control_mode` `servo`, then `rebot_servo_tcp` / `rebot_servo_joints` (and `rebot_capture_view`) in a loop. Scripted pose tools error until you switch back to `scripted`. Capture payloads must stay under the 1 MiB IPC cap; 320×240 JPEG is the intended size for a vision client.
 

@@ -57,6 +57,10 @@ public struct Kinematics: Sendable {
     public func position(_ joints: [Double]) -> SIMD3<Double> {
         translation(endLink(joints))
     }
+    public func toolX(_ joints: [Double]) -> SIMD3<Double> {
+        let m = endLink(joints)
+        return SIMD3(m.columns.0.x, m.columns.0.y, m.columns.0.z)
+    }
     public func toolZ(_ joints: [Double]) -> SIMD3<Double> {
         let m = endLink(joints)
         return SIMD3(m.columns.2.x, m.columns.2.y, m.columns.2.z)
@@ -93,17 +97,18 @@ public struct Kinematics: Sendable {
         }
         return Solution(joints: q, error: simd_distance(position(q), target))
     }
-    /// Level constraint: unattached tool +Z toward world −Z, or attached cube top toward world +Z.
-    public func solve(target: SIMD3<Double>, initial: [Double], keepLevel: Bool, cubeTopInTool: SIMD3<Double>?, iterations: Int = 400) -> Solution {
-        if !keepLevel { return solve(target: target, initial: initial, iterations: iterations) }
+    /// keepLevel: tool +Z or attached cube top toward world +Z (fingers in a level plane).
+    /// fingersDown: tool +X toward world +Z so the pads hang down around a floor cube.
+    public func solve(target: SIMD3<Double>, initial: [Double], keepLevel: Bool, cubeTopInTool: SIMD3<Double>?, fingersDown: Bool = false, iterations: Int = 400) -> Solution {
+        if !keepLevel, !fingersDown { return solve(target: target, initial: initial, iterations: iterations) }
         let positioned = solve(target: target, initial: initial, iterations: iterations)
         var q = positioned.joints
         guard target.x.isFinite, target.y.isFinite, target.z.isFinite else {
             return Solution(joints: q, error: .infinity, orientationError: .infinity)
         }
-        let oriWeight = 0.04
+        let oriWeight = 0.05
         for _ in 0..<max(0, iterations) {
-            let residual = levelResidual(q, target: target, cubeTopInTool: cubeTopInTool)
+            let residual = orientationResidual(q, target: target, cubeTopInTool: cubeTopInTool, fingersDown: fingersDown)
             let pos = SIMD3(residual[0], residual[1], residual[2])
             let ori = SIMD3(residual[3], residual[4], residual[5])
             if simd_length(pos) < 0.001, simd_length(ori) < 0.03 { break }
@@ -111,29 +116,32 @@ public struct Kinematics: Sendable {
             for i in 0..<6 {
                 let h = q[i] + 0.01 <= definition.armJoints[i].upper / degreesToRadians ? 0.01 : -0.01
                 var trial = q; trial[i] += h
-                let n = levelResidual(trial, target: target, cubeTopInTool: cubeTopInTool)
+                let n = orientationResidual(trial, target: target, cubeTopInTool: cubeTopInTool, fingersDown: fingersDown)
                 let scale = 1 / (h * degreesToRadians)
                 for r in 0..<6 { J[r][i] = (n[r] - residual[r]) * scale }
             }
             let step = dampedStep(J, residual, oriWeight: oriWeight)
             q = clampPose(q.enumerated().map { i, v in v - clamp(step[i], -0.12, 0.12) / degreesToRadians })
         }
-        let final = levelResidual(q, target: target, cubeTopInTool: cubeTopInTool)
+        let final = orientationResidual(q, target: target, cubeTopInTool: cubeTopInTool, fingersDown: fingersDown)
         return Solution(
             joints: q,
             error: simd_length(SIMD3(final[0], final[1], final[2])),
             orientationError: simd_length(SIMD3(final[3], final[4], final[5]))
         )
     }
-    private func levelResidual(_ q: [Double], target: SIMD3<Double>, cubeTopInTool: SIMD3<Double>?) -> [Double] {
+    /// `a - b` is zero only when the unit axes match. A cross product is also
+    /// zero when they are opposite, which made keep-level accept a tool pointed up.
+    private func orientationResidual(_ q: [Double], target: SIMD3<Double>, cubeTopInTool: SIMD3<Double>?, fingersDown: Bool) -> [Double] {
         let T = endLink(q)
         let pos = translation(T) - target
         let ori: SIMD3<Double>
-        if let local = cubeTopInTool {
-            let top = simd_normalize(rotation(T) * local)
-            ori = simd_cross(top, SIMD3(0, 0, 1))
+        if fingersDown {
+            ori = simd_normalize(toolX(q)) - SIMD3(0, 0, 1)
+        } else if let local = cubeTopInTool {
+            ori = simd_normalize(rotation(T) * local) - SIMD3(0, 0, 1)
         } else {
-            ori = simd_cross(simd_normalize(toolZ(q)), SIMD3(0, 0, -1))
+            ori = simd_normalize(toolZ(q)) - SIMD3(0, 0, 1)
         }
         return [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z]
     }

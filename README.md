@@ -27,14 +27,14 @@ The repository root is the Swift package root. Open `Package.swift` in Xcode or 
 
 - **Immediate manual motion.** Sliders and numeric fields apply joint and gripper values on the same event; the 3D arm tracks the control without a smoothing delay.
 - **Stop at the floor.** Every moving link, both gripper fingertips, and a held scene cube respect the solid base plane. Manual controls stop at contact and reverse immediately. Presets and sequences stop at the first obstructed point.
-- **Scene cube and kinematic grasp.** A 40 mm cube sits on the floor in front of the base. Closing the gripper around it attaches the cube to the tool; opening releases it. An unattached cube falls under gravity (9.81 m/s²) onto the base plane. There is no payload mass, bounce, or contact friction. The arm can pass through an unattached cube.
+- **Scene cube and kinematic grasp.** A 40 mm cube sits on the floor in front of the base. Closing the gripper around it to about the cube width attaches the cube to the tool; opening past that width plus 12 mm releases it. Pads stop at the cube faces. The wrist/arm cannot pass through an unattached cube. An unattached cube falls under gravity (9.81 m/s²) onto the base plane. There is no payload mass, bounce, or contact friction.
 - **Fold, unfold, and position.** Start in the folded pose with a closed gripper. Choose Folded, Ready, Reach, or Upright, or solve for a tool position. Optional **Keep tool level** IK holds the tool or attached cube within 5° of world vertical.
 - **Build a motion sequence.** Capture named poses, play/pause/resume, adjust speed, and import or export portable trajectory JSON.
 - **Inspect the scene.** Orbit, pan, and zoom; switch camera presets; show the grid, tool axes, and TCP trace.
 - **Keep the reference beside the simulator.** Browse 53 documented actuator registers, seven actuator assignments, SDK defaults, command fields, operating modes, and source links.
 - **Control it through MCP.** A bundled native server exposes 18 tools and two resources, including cube placement, JPEG capture, level IK, and a servo mode for closed-loop clients. No Python or Node runtime is needed to use it.
 
-This is a **kinematic simulator**. It enforces contact with the base plane, including the gripper fingers and a held cube. An unattached cube falls onto that plane. It does not connect to robot hardware or simulate self-collisions, payload mass, bounce, torque, thermal behavior, or actuator dynamics. Published motor settings are reference data; they do not configure the simulator. A fly-brain or other neural controller belongs in an external client, not in this app.
+This is a **kinematic simulator**. It enforces contact with the base plane, including the gripper fingers and a held cube. An unattached cube blocks the wrist/arm and falls onto that plane. It does not connect to robot hardware or simulate self-collisions, payload mass, bounce, torque, thermal behavior, or actuator dynamics. Published motor settings are reference data; they do not configure the simulator. A fly-brain or other neural controller belongs in an external client, not in this app.
 
 ## Get started
 

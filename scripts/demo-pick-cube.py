@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Drive ReBotMCP: pick the default cube, hold 5 seconds, release."""
+import base64
 import json
 import os
 import selectors
@@ -74,8 +75,17 @@ def cube(state):
     return state["objects"]["cube"]
 
 
+def capture(client, folder, name):
+    shot = client.call("rebot_capture_view", {"camera": "Front", "width": 640, "height": 360})
+    path = folder / f"{name}.jpg"
+    path.write_bytes(base64.b64decode(shot["jpeg_base64"]))
+    return str(path)
+
+
 def main():
     log = []
+    captures = Path(os.environ.get("REBOT_DEMO_CAPTURES", ROOT / "work" / "pick-demo"))
+    captures.mkdir(parents=True, exist_ok=True)
     client = Client(MCP)
     try:
         info = client.initialize()
@@ -106,27 +116,33 @@ def main():
         client.wait_stopped()
 
         cx, cy = spawn["center_mm"]["x"], spawn["center_mm"]["y"]
-        # Position-only IK: keep_level solutions currently drive the wrist into the floor.
-        # Grasp AABB needs TCP within ~25 mm of the cube center (z≈19 mm). Open fingers
-        # hit the plane below ~40 mm, so 40 mm is the reachable grasp height.
-        client.call("rebot_move_to_position", {"x_mm": cx, "y_mm": cy, "z_mm": 80})
-        client.wait_stopped()
-        client.call("rebot_move_to_position", {"x_mm": cx, "y_mm": cy, "z_mm": 40})
+        size = spawn["size_mm"]
+        # Tool origin is the fingertip center. Level IK keeps fingers in a
+        # horizontal plane. z=48 mm sits the pads on the cube without putting
+        # the wrist through the floor. Pinch at cube width, not 20 mm.
+        client.call("rebot_move_to_pose", {"x_mm": cx, "y_mm": cy, "z_mm": 48, "keep_level": True})
         approach = client.wait_stopped()
-        log.append({"step": "approach", "tcp_mm": approach["tcp_mm"], "attached": cube(approach)["attached"], "min_mm": approach["floor"]["minimum_robot_height_mm"]})
+        log.append({"step": "approach", "tcp_mm": approach["tcp_mm"], "attached": cube(approach)["attached"], "min_mm": approach["floor"]["minimum_robot_height_mm"], "tcp_level": approach.get("tcp_level"), "photo": capture(client, captures, "01-approach")})
 
-        client.call("rebot_set_gripper", {"opening_mm": 20})
+        pinch = size + 2
+        client.call("rebot_set_gripper", {"opening_mm": pinch})
         grabbed = client.wait_stopped()
-        log.append({"step": "close", "attached": cube(grabbed)["attached"], "gripper_mm": grabbed["gripper_mm"], "tcp_mm": grabbed["tcp_mm"]})
+        log.append({"step": "close", "attached": cube(grabbed)["attached"], "gripper_mm": grabbed["gripper_mm"], "tcp_mm": grabbed["tcp_mm"], "photo": capture(client, captures, "02-pinch")})
         if not cube(grabbed)["attached"]:
             raise SystemExit(f"cube did not attach: tcp={grabbed['tcp_mm']} cube={cube(grabbed)}")
+        if grabbed["gripper_mm"] < size - 3:
+            raise SystemExit(f"gripper closed through the cube: {grabbed['gripper_mm']} mm vs cube {size} mm")
 
-        client.call("rebot_move_to_position", {"x_mm": cx, "y_mm": cy, "z_mm": 150})
+        client.call("rebot_move_to_pose", {"x_mm": cx, "y_mm": cy, "z_mm": 160, "keep_level": True})
         held = client.wait_stopped()
-        log.append({"step": "lift", "attached": cube(held)["attached"], "tcp_mm": held["tcp_mm"], "tcp_level": held.get("tcp_level")})
+        log.append({"step": "lift", "attached": cube(held)["attached"], "tcp_mm": held["tcp_mm"], "cube": cube(held), "tcp_level": held.get("tcp_level")})
+        if not cube(held)["attached"]:
+            raise SystemExit(f"cube dropped during lift: {cube(held)}")
+        if cube(held)["center_mm"]["z"] < 80:
+            raise SystemExit(f"cube was not lifted: {cube(held)}")
         time.sleep(5)
         still = client.call("rebot_get_state")
-        log.append({"step": "hold_5s", "attached": cube(still)["attached"], "tcp_mm": still["tcp_mm"]})
+        log.append({"step": "hold_5s", "attached": cube(still)["attached"], "tcp_mm": still["tcp_mm"], "cube": cube(still), "photo": capture(client, captures, "03-hold")})
 
         client.call("rebot_set_gripper", {"opening_mm": 60})
         dropped = client.wait_stopped()
@@ -139,7 +155,7 @@ def main():
             if not c["attached"] and not c.get("falling") and c["center_mm"]["z"] < 25:
                 break
             time.sleep(0.05)
-        log.append({"step": "landed", "cube": cube(landed), "tcp_mm": landed["tcp_mm"]})
+        log.append({"step": "landed", "cube": cube(landed), "tcp_mm": landed["tcp_mm"], "photo": capture(client, captures, "04-landed")})
         print(json.dumps({"ok": True, "log": log}, indent=2))
         if cube(dropped)["attached"]:
             raise SystemExit("cube still attached after release")

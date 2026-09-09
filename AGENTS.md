@@ -15,7 +15,7 @@ The user has authorized consolidation into this repository. Preserve the motion 
 - **`RobotScene` does not observe `AppModel`.** Pose updates go through `applyPose`. `updateNSView` only syncs grid, axes, trace, camera flags, and the cube entity.
 - Numeric TCP/joint readouts may update at 15 Hz. The viewport must not wait on those publishes.
 - **Do not `@Publish` cube pose or servo ticks.** Cube transforms go through `RobotViewport.syncCube`. Servo uses the interactive apply path (`commit` / `applyPose`), not `MotionPlayer` and not `ManualMotion`.
-- Floor limiting must include a **held** cube AABB. Unattached cubes do not collide with the arm. They fall under `CubeState.integrateGravity` from the RealityKit frame callback even when playback is stopped. Do not `@Publish` those ticks.
+- Floor limiting must include a **held** cube AABB. An unattached cube blocks non-finger hulls (wrist/arm). Fingers do not use those hulls: if the cube is in the jaws or attached, grip is clamped to about the cube width so the pads cannot close through it. Unattached cubes fall under `CubeState.integrateGravity` from the RealityKit frame callback even when playback is stopped. Do not `@Publish` those ticks.
 
 ## Files
 

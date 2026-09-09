@@ -37,10 +37,71 @@ public struct FloorConstraint: Sendable {
         }
         return height
     }
-    public func isAllowed(_ pose: Pose, cube: CubeState? = nil) -> Bool { minimumHeight(pose, cube: cube) >= Self.height }
+    public func isAllowed(_ pose: Pose, cube: CubeState? = nil) -> Bool {
+        guard minimumHeight(pose, cube: cube) >= Self.height else { return false }
+        if cubePenetration(pose, cube: cube) > 0.0005 { return false }
+        if let cube, cube.present {
+            let end = robot.endLink(pose.joints, grip: pose.grip)
+            if (cube.attached || Grasp.inJaws(cube: cube, endLink: end)), pose.grip + 1e-6 < Grasp.minimumOpeningMM(cube) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Positive when a non-finger hull point is inside an unattached cube. Fingers are limited by grip, not hulls.
+    public func cubePenetration(_ pose: Pose, cube: CubeState?) -> Double {
+        guard let cube, cube.present, !cube.attached else { return 0 }
+        let transforms = robot.transforms(pose.joints, grip: pose.grip)
+        let inverse = cube.rotation.inverse
+        let half = cube.size / 2
+        var depth = 0.0
+        for hull in supports where !hull.name.hasPrefix("finger_") {
+            let m = transforms[hull.name]!
+            for p in hull.points {
+                let world = SIMD3(
+                    m[0].x * p.x + m[1].x * p.y + m[2].x * p.z + m[3].x,
+                    m[0].y * p.x + m[1].y * p.y + m[2].y * p.z + m[3].y,
+                    m[0].z * p.x + m[1].z * p.y + m[2].z * p.z + m[3].z
+                )
+                let local = inverse.act(world - cube.center)
+                let dx = abs(local.x) - half.x, dy = abs(local.y) - half.y, dz = abs(local.z) - half.z
+                if dx <= 0, dy <= 0, dz <= 0 {
+                    depth = max(depth, min(-dx, min(-dy, -dz)))
+                }
+            }
+        }
+        return depth
+    }
 
     /// Returns the first contact along the requested motion, even when its endpoint is clear.
     public func limited(from: Pose, to: Pose, cube: CubeState? = nil) -> Pose {
+        let candidate = limitedByFloor(from: from, to: to, cube: cube)
+        let stopped = stopAtUnattachedCube(from: from, candidate: candidate, cube: cube)
+        return clampGripAroundCube(from: from, candidate: stopped, cube: cube)
+    }
+    private func clampGripAroundCube(from: Pose, candidate: Pose, cube: CubeState?) -> Pose {
+        guard let cube, cube.present else { return candidate }
+        let end = robot.endLink(from.joints, grip: from.grip)
+        guard cube.attached || Grasp.inJaws(cube: cube, endLink: end) else { return candidate }
+        let minimum = Grasp.minimumOpeningMM(cube)
+        guard candidate.grip + 1e-9 < minimum else { return candidate }
+        var pose = candidate
+        pose.grip = minimum
+        return pose
+    }
+    private func stopAtUnattachedCube(from: Pose, candidate: Pose, cube: CubeState?) -> Pose {
+        guard let cube, cube.present, !cube.attached else { return candidate }
+        if cubePenetration(candidate, cube: cube) <= 0.0005 { return candidate }
+        if cubePenetration(from, cube: cube) > 0.0005 { return from }
+        var low = 0.0, high = 1.0
+        for _ in 0..<32 {
+            let middle = (low + high) / 2
+            if cubePenetration(blend(from, candidate, middle), cube: cube) <= 0.0005 { low = middle } else { high = middle }
+        }
+        return blend(from, candidate, low)
+    }
+    private func limitedByFloor(from: Pose, to: Pose, cube: CubeState?) -> Pose {
         let changed = (0..<6).filter { from.joints[$0] != to.joints[$0] }
         if changed.isEmpty {
             // Finger travel is linear, so endpoint heights bound the complete swept motion.
@@ -75,7 +136,12 @@ public struct FloorConstraint: Sendable {
             if first < m { return first }
             return walk(m, b, hm, hb, depth + 1)
         }
-        let fraction = walk(0, 1, minimumHeight(from, cube: cube) - Self.height, minimumHeight(to, cube: cube) - Self.height, 0)
+        // A pose already in plane contact (held cube on the floor, fingertip stop)
+        // must still be allowed to leave. Treat a legal start as just above the margin
+        // so the certifier does not fail-close at t=0.
+        var startClearance = minimumHeight(from, cube: cube) - Self.height
+        if startClearance >= -1e-8 { startClearance = max(startClearance, Self.margin) }
+        let fraction = walk(0, 1, startClearance, minimumHeight(to, cube: cube) - Self.height, 0)
         return fraction == 1 ? to : blend(from, to, fraction)
     }
     private func limitJoint(from: Pose, to: Pose, index: Int) -> Pose {

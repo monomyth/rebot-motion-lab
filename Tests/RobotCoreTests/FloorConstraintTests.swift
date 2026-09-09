@@ -65,6 +65,22 @@ struct FloorConstraintTests {
             #expect(floor.minimumHeight(Motion.interpolate(from: from, to: stopped, fraction: Double(i)/100)) >= FloorConstraint.height)
         }
     }
+    @Test func unattachedCubeStopsTheWrist() throws {
+        let (robot, floor) = try setup()
+        let cube = CubeState.spawn
+        let from = pose()
+        #expect(floor.cubePenetration(from, cube: cube) == 0)
+        let through = robot.solve(target: cube.center, initial: homePose)
+        #expect(through.success)
+        var to = from
+        to.joints = through.joints
+        to.grip = 60
+        let stopped = floor.limited(from: from, to: to, cube: cube)
+        if floor.cubePenetration(to, cube: cube) > 0.0005 {
+            #expect(floor.cubePenetration(stopped, cube: cube) <= 0.0005)
+            #expect(stopped.joints != to.joints)
+        }
+    }
     private func originalMeshMinimum(_ robot: Kinematics, _ pose: Pose) throws -> (height: Double, link: String) {
         let transforms = robot.transforms(pose.joints, grip: pose.grip)
         var lowest = Double.infinity, name = ""

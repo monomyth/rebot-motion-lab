@@ -18,10 +18,12 @@ public enum ControlCatalog {
         tool("rebot_set_joint", "Smoothly move one simulated joint, preserving other angles and gripper. Stop existing motion first.", ["joint": ["type": "integer", "minimum": 1, "maximum": 6], "angle_deg": number("Target angle in degrees; see get_state joint limits.")], required: ["joint", "angle_deg"]),
         tool("rebot_set_gripper", "Smoothly change the simulated gripper opening, preserving the arm pose. Stop existing motion first.", ["opening_mm": number("0 is closed; 90 is open.", min: 0, max: 90)], required: ["opening_mm"]),
         tool("rebot_move_to_position", "Position-only IK in robot base coordinates (mm). Orientation is unconstrained. Unreachable targets leave the pose unchanged. Returns accepted motion; poll get_state until stopped. Disabled in servo mode.", ["x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm.")], required: ["x_mm", "y_mm", "z_mm"]),
-        tool("rebot_move_to_pose", "Cartesian IK with optional keep_level (tool/cube top within 5° of world vertical). Position in mm. Unreachable targets leave the pose unchanged. Disabled in servo mode.", [
+        tool("rebot_move_to_pose", "Cartesian IK with optional keep_level (tool +Z / cube top within 5° of world +Z) or fingers_down (pads hang along world −Z). Position in mm. Unreachable targets leave the pose unchanged. Disabled in servo mode.", [
             "x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm."),
             "roll_deg": number("Optional tool roll in degrees."), "pitch_deg": number("Optional tool pitch in degrees."),
-            "yaw_deg": number("Optional tool yaw in degrees."), "keep_level": ["type": "boolean", "description": "Constrain the tool or attached cube to stay level with the ground."]
+            "yaw_deg": number("Optional tool yaw in degrees."),
+            "keep_level": ["type": "boolean", "description": "Keep the tool or attached cube level: tool +Z or cube top along world +Z."],
+            "fingers_down": ["type": "boolean", "description": "Point tool +X along world +Z so the pads hang down. Overrides keep_level."]
         ], required: ["x_mm", "y_mm", "z_mm"]),
         tool("rebot_set_cube", "Place, resize, hide, or drop the kinematic scene cube. Omitted fields stay unchanged. Centers are mm in the robot base frame. Rejects poses through the floor.", [
             "x_mm": number("Cube center X in mm."), "y_mm": number("Cube center Y in mm."), "z_mm": number("Cube center Z in mm."),

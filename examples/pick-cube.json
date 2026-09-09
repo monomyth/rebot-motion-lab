@@ -22,12 +22,12 @@
     {
       "name": "Close gripper",
       "joints": [0, -125, -115, 30, 0, 0],
-      "gripper_opening": 20
+      "gripper_opening": 42
     },
     {
       "name": "Lift",
       "joints": [0, -90, -105, 15, 0, 0],
-      "gripper_opening": 20
+      "gripper_opening": 42
     }
   ]
 }

@@ -198,10 +198,16 @@ struct RobotScene: NSViewRepresentable {
         cubeEntity.scale = SIMD3<Float>(cube.size / 0.04)
         let pose = cube.worldMatrix
         if cube.attached, let end = linkEntities["end_link"] {
-            if cubeEntity.parent !== end { end.addChild(cubeEntity) }
+            if cubeEntity.parent !== end {
+                cubeEntity.removeFromParent()
+                end.addChild(cubeEntity)
+            }
             cubeEntity.transform = Transform(matrix: floatMatrix(cube.attachLocal))
         } else {
-            if cubeEntity.parent !== self.world { self.world.addChild(cubeEntity) }
+            if cubeEntity.parent !== self.world {
+                cubeEntity.removeFromParent()
+                self.world.addChild(cubeEntity)
+            }
             cubeEntity.transform = Transform(matrix: floatMatrix(pose))
         }
     }

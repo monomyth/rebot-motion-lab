@@ -3,8 +3,8 @@
 ## 1.6.0 — 2026-09-09
 
 - Added a kinematic scene cube on the base plane (default 40 mm at 280 mm forward), MCP `rebot_set_cube`, and reset-to-spawn.
-- Closing the gripper in the fingertip AABB attaches the cube; opening releases it onto the plane. A held cube participates in floor stops. No payload physics.
-- Added level IK (`rebot_move_to_pose`, Keep tool level) so the tool or attached cube stays within 5° of world vertical. State reports `tcp_rpy_deg` and `tcp_level`.
+- Closing the gripper around the cube to about the cube width attaches it; opening 12 mm past that width releases it. Pads cannot close through the cube. The wrist/arm cannot pass through an unattached cube. A held cube participates in floor stops. No payload physics.
+- Added level IK (`rebot_move_to_pose`, Keep tool level) so the tool +Z or attached cube top stays within 5° of world +Z. Optional `fingers_down` points tool +X up. State reports `tcp_rpy_deg` and `tcp_level`.
 - Added `rebot_capture_view` JPEG snapshots of the RealityKit camera (default 320×240) for Front/Top/Orbit without stealing the user view unless `apply` is true. Top/Front framing includes the default cube.
 - Added servo mode (`rebot_set_control_mode`, `rebot_servo_joints`, `rebot_servo_tcp`) for immediate closed-loop pose updates. Scripted quintic tools remain the default.
 - MCP catalog version 1.6 with 18 tools. Client registration id is `rebot-motion-lab-grok` so it does not collide with the original lab. Web simulator shows the same default cube (visual only).
