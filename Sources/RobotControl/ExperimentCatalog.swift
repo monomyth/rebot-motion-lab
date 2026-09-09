@@ -10,13 +10,15 @@ extension ControlCatalog {
             ["name":name,"description":description,"inputSchema":object(props,required),"annotations":["readOnlyHint":readOnly,"destructiveHint":false,"openWorldHint":false]]
         }
         let pose=object(["position_mm":array(3),"quaternion_xyzw":array(4)],["position_mm","quaternion_xyzw"])
-        let task=object(["version":["type":"integer","enum":[1]],"cube_size_mm":number(30,65),"cube_xy_mm":array(2),"cube_yaw_deg":number(-180,180),
+        let task=object(["version":["type":"integer","enum":[1]],"cube_size_mm":number(10,90),"cube_xy_mm":array(2),"cube_yaw_deg":number(-180,180),
             "mass_grams":number(10,250),"friction":number(0.1,2),"lift_clearance_mm":number(20,250),"tilt_tolerance_deg":number(1,30),
             "hold_seconds":number(1,60),"timeout_seconds":number(6,600),"stable_linear_mm_s":number(1,100),"stable_angular_deg_s":number(1,90),
             "initial_joints_deg":array(6),"initial_gripper_mm":number(0,90),"input_mode":string(["vision","state"]),"placement_jitter_mm":number(0,20),"seed":["type":"integer","minimum":0,"maximum":9007199254740991]])
         let poseArgs:[String:Any] = ["pose":pose,"frame":string(["tool","grasp"]),"gripper_mm":number(0,90)]
         return [
             tool("rebot_configure_task","Configure a native contact-physics cube experiment. Partial task fields override defaults. Requires stopped motion, no controller, and macOS 15+.",["task":task],["task"]),
+            tool("rebot_place_cube","Place or resize the existing cube on the floor without moving the robot. Positions need not be reachable by the arm. The full cube must fit on the floor. Begins a new episode and clears placement jitter; stop motion, recording and external control first.",
+                 ["x_mm":number(),"y_mm":number(),"size_mm":number(10,90),"yaw_deg":number(-180,180)], ["x_mm","y_mm"]),
             tool("rebot_get_task","Read task configuration, backend capabilities, and evaluator status. Contains privileged setup/evaluator data; do not feed into a vision-only policy.",readOnly:true),
             tool("rebot_reset_episode","Atomically reset robot, cube, physics, pending actions, and scoring. Optional seed controls configured XY jitter. Invalidates the controller token; wait until phase is ready.",["seed":["type":"integer","minimum":0,"maximum":9007199254740991]]),
             tool("rebot_get_observation","Read synchronized policy observations. Optional bounded JPEG front/top images. Exact cube state is omitted in vision mode.",["images":["type":"boolean"]],readOnly:true),

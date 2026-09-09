@@ -1,0 +1,76 @@
+{
+  "transport": "MCP stdio",
+  "checks": [
+    "10 mm cube configured and resting outside the old reachable radius",
+    "Resize 10\u201390 mm and move to arbitrary floor XY without changing arm pose, closed aperture, or task material",
+    "Out-of-range sizes, off-floor/rotated footprints and robot overlap rejected atomically",
+    "Reset preserves cube settings; far-floor episodes run; external ownership blocks editing",
+    "Existing MCP pickup and five-second level hold still pass after placement/resizing"
+  ],
+  "sizes": [
+    {
+      "requested_mm": 90,
+      "collider_mm": [
+        90,
+        90,
+        90
+      ],
+      "center_z_mm": 43.99999976158142
+    },
+    {
+      "requested_mm": 10,
+      "collider_mm": [
+        10,
+        10,
+        10
+      ],
+      "center_z_mm": 4.000000189989805
+    },
+    {
+      "requested_mm": 35.5,
+      "collider_mm": [
+        35.5,
+        35.5,
+        35.5
+      ],
+      "center_z_mm": 16.750000417232513
+    }
+  ],
+  "pickup": {
+    "clearance_mm": 115.26329343672839,
+    "tilt_deg": 0.028376962538861746,
+    "hold_seconds": 5.000000260770321
+  },
+  "success": true,
+  "app_version": "1.7-fly-codex",
+  "swift_tests_passed": 40,
+  "legacy_mcp_groups_passed": 9,
+  "native_smoke_passed": true,
+  "side_range_mm": [
+    10,
+    90
+  ],
+  "floor_side_mm": 4000,
+  "mouse_ui_check": {
+    "verified": true,
+    "observed_xy_mm": [
+      404.07,
+      -298.1
+    ],
+    "side_mm": 90,
+    "view": "Top"
+  },
+  "minimum_ui_check": {
+    "verified": true,
+    "side_mm": 10,
+    "actual_collider_mm": [
+      10,
+      10,
+      10
+    ],
+    "xy_mm": [
+      400.0000059604645,
+      -150.00000596046448
+    ]
+  }
+}

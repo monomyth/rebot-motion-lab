@@ -11,7 +11,7 @@ Standard kinematic mode supports macOS 14+. Manipulation experiments require mac
 ## Quick start
 
 1. Build with `bash scripts/build-app.sh ./dist` and open the resulting Codex app.
-2. In Simulator, expand **Cube pickup experiment**, select observations, and choose **Set up cube**. Wait for Ready. Setup builds compound convex colliders asynchronously.
+2. In Simulator, expand **Cube pickup experiment**, select observations, and choose **Set up cube**. Wait for Ready. Use **Apply cube** to change X/Y, yaw, or size later, or **Place with mouse** to click a clear floor point in Top view. Cube sides are bounded to 10–90 mm (1–9 cm). Setup builds compound convex colliders asynchronously.
 3. Choose Front or Top in the existing viewing controls. The two smaller observation views stay fixed independently of that spectator camera.
 4. Start an episode, record a demonstration, or connect an external controller. Use **Stop arm / Take over** to return control to the sliders. **Pause** freezes the whole experiment. **Reset** restores the configured starting state.
 5. Save/load task JSON separately from ordinary trajectory JSON. Use Record / Stop recording to obtain a private recording directory.
@@ -46,7 +46,7 @@ The geometric jaw stop prevents a close command from passing through an enclosed
 
 Task stability uses finite differences of post-physics cube poses. RealityKit's raw solver velocities can contain contact-correction motion even while the resolved pose is stationary; they are separately exported under `solver_velocities`. Contact impulses are reported in N·s, not mislabelled as force. These measurements do not validate real gripper force, load limits, or actuator dynamics.
 
-Physics is real time and is not claimed to be bitwise deterministic. `seed` controls optional uniform XY placement jitter (`placement_jitter_mm`, 0–20 mm per axis), not RealityKit's solver. Reset with the same seed reproduces the initial placement; a different seed changes it when jitter is enabled. Every sampled setup is validated for a reachable, floor-clear grasp and lift. Reset invalidates the controller token and clears velocities, contacts, queued targets, neural-session ownership, and evaluation counters, then reports `settling` until the scene is ready. The external process must reset its own neural state.
+Physics is real time and is not claimed to be bitwise deterministic. `seed` controls optional uniform XY placement jitter (`placement_jitter_mm`, 0–20 mm per axis), not RealityKit's solver. Reset with the same seed reproduces the initial placement; a different seed changes it when jitter is enabled. Every sampled setup is validated to keep its full footprint on the floor and its initial robot pose clear of the floor. Cube placement is independent of arm reach; reachability and approach clearance are checked when requesting motion. Reset invalidates the controller token and clears velocities, contacts, queued targets, neural-session ownership, and evaluation counters, then reports `settling` until the scene is ready. The external process must reset its own neural state.
 
 `get_task.configuration` is the saved task recipe; `get_task.task` is the current sampled episode. Setup validation is distinct from control failure. A cube displaced during initial settling produces `phase: invalid`.
 
@@ -54,12 +54,13 @@ Pause freezes physics time and stops arm commands; resume requires reacquiring e
 
 ## Added MCP tools
 
-The original 12 tools and two resources remain. The 11 additional tools are:
+The original 12 tools and two resources remain. The 12 additional tools are:
 
 | Tool | Inputs / result |
 | --- | --- |
 | `rebot_configure_task` | `task` overrides defaults; returns setup acceptance. Poll phase until ready/invalid. |
-| `rebot_get_task` | Recipe, sampled task, capabilities, and evaluator state. |
+| `rebot_get_task` | Recipe, sampled task, size/floor limits, capabilities, and evaluator state. |
+| `rebot_place_cube` | `x_mm`, `y_mm`, optional `size_mm` and `yaw_deg`; place/resize on the floor while preserving the arm pose. |
 | `rebot_reset_episode` | Optional `seed`; invalidates the old controller session. |
 | `rebot_get_observation` | Optional `images` boolean; policy observations. |
 | `rebot_get_evaluation` | Privileged cube pose, motion, contact, score, and status. |
@@ -132,3 +133,22 @@ python3 scripts/verify-experiment.py \
 The native experiment verifier launches only its own app and private socket, drives the conventional controller through the public IPC, captures front/top images, verifies contact pickup and five-second holding, releases the cube, checks controller timeout and reset, and checks vision-mode input isolation. `--cube-x`, `--cube-y`, and `--cube-yaw` select additional placements. It cleans up only its own process. Native checks require a working macOS window/renderer.
 
 Run the existing `--smoke-test` and `--performance-check` harnesses for the original UI and immediate slider behaviour. Examine native images and measurement reports in addition to unit tests. A successful conventional trial proves environment readiness for that configuration; it does not prove MaleCNS learning, robustness to every grasp, or transfer to hardware.
+
+## Repositioning and resizing
+
+The existing floor is 4 m × 4 m, centered at the robot base. Cube centers can use any X/Y for which the complete rotated cube footprint fits on that surface, including positions outside the arm's reach. Cube side length is 10–90 mm inclusive; 90 mm is the fully open gripper limit, independent of its current aperture. A conservative check against per-part robot collision bounds rejects occupied locations before changing the scene.
+
+After setup, edit **Cube X mm**, **Cube Y mm**, **Cube side mm**, and yaw, then press **Apply cube**. **Place with mouse** switches to Top view and arms the next floor click using the entered side and yaw. Shift-drag/right-drag pans, scrolling zooms, and Escape cancels placement. Coordinate fields synchronize after mouse/MCP placement and reset.
+
+Through MCP:
+
+```json
+{
+  "name": "rebot_place_cube",
+  "arguments": {"x_mm": 450, "y_mm": -100, "size_mm": 30, "yaw_deg": 0}
+}
+```
+
+Changing the cube rebuilds only its rendered/physical body, preserves the current arm joints/aperture and other task settings, clears placement jitter, and starts a fresh episode with the cube resting on the floor. Reset remembers the new cube settings and restores the configured initial robot pose. Stop motion, external control, and recording before editing. Rejected dimensions, occupied positions, and off-floor footprints leave the previous episode and cube unchanged.
+
+Run `python3 scripts/verify-cube-edit.py "dist/ReBot Motion Lab Codex.app" /tmp/rebot-cube-check` to verify both size limits, far-floor placement, dimensions in the actual collider, arm-state preservation, rejection, reset, and a pickup regression through MCP.

@@ -28,7 +28,7 @@ struct ControlTests {
         let server = MCPProtocol { name, _ in ["tool": name, "joints_deg": [0,0,0,0,0,0]] }
         try ready(server)
         let list = server.handle(try request("tools/list"))!["result"] as! [String: Any]
-        #expect((list["tools"] as? [[String: Any]])?.count == 23)
+        #expect((list["tools"] as? [[String: Any]])?.count == 24)
         let result = server.handle(try request("tools/call", ["name": "rebot_get_state"]))!["result"] as! [String: Any]
         #expect(result["isError"] as? Bool == false)
         #expect((result["structuredContent"] as? [String: Any])?["tool"] as? String == "rebot_get_state")

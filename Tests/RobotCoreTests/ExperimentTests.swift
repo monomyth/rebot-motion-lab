@@ -24,7 +24,7 @@ struct ExperimentTests {
         #expect(abs(task.initialCubePose.positionMM[2] - 24) < 1e-9)
         var invalid=task; invalid.cubeSizeMM=100
         #expect(throws:ExperimentError.self) { try invalid.validated(robot:robot,floor:floor) }
-        invalid=task; invalid.cubeXYMM=[0,0]
+        invalid=task; invalid.cubeXYMM=[2000,0]
         #expect(throws:ExperimentError.self) { try invalid.validated(robot:robot,floor:floor) }
         invalid=task; invalid.initialJoints=[0,0]
         #expect(throws:ExperimentError.self) { try invalid.validated(robot:robot,floor:floor) }

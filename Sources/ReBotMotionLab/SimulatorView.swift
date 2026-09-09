@@ -71,7 +71,7 @@ struct SimulatorView: View {
             }
         }
         .overlay(alignment: .top) {
-            Text("Drag to orbit · Shift-drag to pan · Scroll to zoom").labFont(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 55).allowsHitTesting(false)
+            CubePlacementHint(coordinator:model.experiment).padding(.top,55).allowsHitTesting(false)
         }
     }
     private var targetControls: some View {

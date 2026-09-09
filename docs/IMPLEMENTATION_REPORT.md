@@ -1,5 +1,7 @@
 # Native cube experiment implementation
 
+The initial 1.6 validation below is retained as historical evidence. Version 1.7 adds arbitrary floor placement and 10–90 mm sizing; see [CUBE_PLACEMENT.md](CUBE_PLACEMENT.md) and [the placement verification](../Verification/cube-placement/results.json).
+
 Implemented on `feature/fly-brain-codex` in the separate `rebot-motion-lab-codex` clone. The original checkout was not edited.
 
 ## Delivered scope

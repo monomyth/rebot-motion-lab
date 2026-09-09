@@ -2,7 +2,7 @@ import Foundation
 import CoreFoundation
 
 public enum ControlCatalog {
-    public static let version = "1.6-fly-codex"
+    public static let version = "1.7-fly-codex"
     public static var experimentToolNames: Set<String> { Set(experimentTools.compactMap { $0["name"] as? String }) }
     private static func number(_ description: String, min: Double? = nil, max: Double? = nil) -> [String: Any] {
         var s: [String: Any] = ["type": "number", "description": description]

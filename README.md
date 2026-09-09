@@ -31,9 +31,10 @@ The repository root is the Swift package root. Open `Package.swift` in Xcode or 
 - **Stop at the floor.** Every moving link and both gripper fingertips respect the solid base plane. Manual controls stop at contact and reverse immediately. Presets and sequences stop at the first obstructed point.
 - **Fold, unfold, and position.** Start in the folded pose with a closed gripper. Choose Folded, Ready, Reach, or Upright, or solve for a tool position with inverse kinematics.
 - **Build a motion sequence.** Capture named poses, play/pause/resume, adjust speed, and import or export portable trajectory JSON.
+- **Place and resize the cube.** Use X/Y coordinates or click a clear floor point, with cube sides from 10–90 mm. Cube edits preserve the arm pose and are available through MCP.
 - **Inspect the scene.** Orbit, pan, and zoom; switch camera presets; show the grid, tool axes, and TCP trace.
 - **Keep the reference beside the simulator.** Browse 53 documented actuator registers, seven actuator assignments, SDK defaults, command fields, operating modes, and source links.
-- **Control it through MCP.** A bundled native server exposes 23 tools and two resources to compatible clients. No Python or Node runtime is needed to use it.
+- **Control it through MCP.** A bundled native server exposes 24 tools and two resources to compatible clients. No Python or Node runtime is needed to use it.
 
 Standard mode is a **kinematic simulator** with floor stops. The optional native cube experiment adds gravity, rigid cube contacts, frictional grasping, orientation-aware control, and evaluation. Robot self-collisions, actuator dynamics, torque/thermal behaviour, and hardware control remain outside scope. Published motor settings are reference data. Standard mode supports macOS 14+; cube physics requires macOS 15+.
 

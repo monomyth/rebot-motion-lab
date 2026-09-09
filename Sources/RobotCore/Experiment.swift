@@ -33,24 +33,18 @@ public struct ExperimentTask: Codable, Equatable, Sendable {
     public var placementJitterMM = 0.0
     public init() {}
     public func validated(robot: Kinematics, floor: FloorConstraint) throws -> Self {
+        try CubePlacement.validate(xyMM:cubeXYMM, sideMM:cubeSizeMM, yawDeg:cubeYawDeg, jitterMM:placementJitterMM)
         let values = [cubeSizeMM, cubeYawDeg, massGrams, friction, liftClearanceMM, tiltToleranceDeg, holdSeconds, timeoutSeconds, stableLinearMMPerSecond, stableAngularDegPerSecond, initialGripperMM, placementJitterMM] + cubeXYMM + initialJoints
         guard version == 1, values.allSatisfy(\.isFinite), cubeXYMM.count == 2, initialJoints.count == 6,
-              initialJoints == robot.clampPose(initialJoints), (0...90).contains(initialGripperMM),
-              (30...65).contains(cubeSizeMM), (-180...180).contains(cubeYawDeg), seed <= 9007199254740991,
+              initialJoints == robot.clampPose(initialJoints), (0...maximumGripperOpeningMM).contains(initialGripperMM),
+              seed <= 9007199254740991,
               (10...250).contains(massGrams), (0.1...2).contains(friction),
               (20...250).contains(liftClearanceMM), (1...30).contains(tiltToleranceDeg), (1...60).contains(holdSeconds),
               timeoutSeconds >= holdSeconds + 5, timeoutSeconds <= 600,
               (1...100).contains(stableLinearMMPerSecond), (1...90).contains(stableAngularDegPerSecond), (0...20).contains(placementJitterMM),
-              ["vision", "state"].contains(inputMode), floor.isAllowed(Pose(name: "initial", joints: initialJoints, grip: initialGripperMM)),
-              hypot(cubeXYMM[0],cubeXYMM[1]) >= 200, hypot(cubeXYMM[0],cubeXYMM[1]) <= 500
-        else { throw ExperimentError.invalid("Invalid task. Cube: 30–65 mm, 10–250 g, reachable radius 200–500 mm; initial pose must clear the floor. See task schema.") }
-        let target = graspPose(clearanceMM: 0)
-        let solution = try robot.solvePose(target: target, initial: initialJoints, frame: "grasp")
-        let raised = try robot.solvePose(target: graspPose(clearanceMM: liftClearanceMM + 10), initial: solution.joints, frame: "grasp")
-        guard solution.success, raised.success,
-              floor.isAllowed(Pose(name: "grasp", joints: solution.joints, grip: cubeSizeMM)),
-              floor.isAllowed(Pose(name: "lift", joints: raised.joints, grip: cubeSizeMM))
-        else { throw ExperimentError.invalid("Cube placement has no floor-clear grasp and lift solution.") }
+              ["vision", "state"].contains(inputMode), floor.isAllowed(Pose(name: "initial", joints: initialJoints, grip: initialGripperMM))
+        else { throw ExperimentError.invalid("Invalid task parameters; the initial robot pose must clear the floor. See task schema.") }
+        // Placement is independent of arm reach. Individual motion requests still validate IK.
         return self
     }
     public func episode(seed: UInt64? = nil) -> Self {

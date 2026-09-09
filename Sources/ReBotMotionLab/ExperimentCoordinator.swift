@@ -8,6 +8,10 @@ import simd
 @MainActor final class ExperimentCoordinator: ObservableObject {
     private unowned let model: AppModel
     @Published private(set) var enabled=false
+    @Published private(set) var placingCube=false
+    @Published private(set) var placementMessage: String?
+    private var placementSizeMM=50.0
+    private var placementYawDeg=0.0
     @Published private(set) var phase="disabled"
     @Published private(set) var cameras: [ObservationCamera]=[]
     @Published private(set) var displayRevision=0
@@ -46,6 +50,7 @@ import simd
         if recording { _ = try recorder.stop(); recording=false }
         // Convex decomposition can take seconds. Accept setup immediately and yield during
         // native shape creation so the IPC and render thread remain responsive.
+        cancelFloorPlacement()
         phase="configuring"; lastError=nil; model.setExternalControlLock(true); scene?.setPaused(true)
         setupTask = Task { @MainActor in
             do {
@@ -64,18 +69,54 @@ import simd
     func reset(seed: UInt64? = nil) throws {
         guard !captureBusy, phase != "configuring", let scene else { throw ExperimentError.invalid("Configure an experiment and finish image capture before reset.") }
         let trial=try configuration.episode(seed:seed).validated(robot:model.robot,floor:model.floor)
+        let pose=Pose(name:"Experiment initial",joints:trial.initialJoints,grip:trial.initialGripperMM)
+        try scene.validatePlacement(trial, robotPose:pose)
+        beginEpisode(trial:trial, pose:pose, scene:scene, encodedTask:try jsonObject(trial))
+    }
+    private func beginEpisode(trial:ExperimentTask, pose:Pose, scene:ManipulationScene, encodedTask:[String:Any]) {
+        cancelFloorPlacement()
         task=trial
         lease.release(); target=nil
         model.setExternalControlLock(false)
         model.stopPlaybackOnly()
-        let pose=Pose(name:"Experiment initial",joints:task.initialJoints,grip:task.initialGripperMM)
-        model.applyExperimentPose(pose)
+        model.applyExperimentPose(pose, immediately:true)
         scene.reset(task:task,pose:pose)
         episodeID=UUID().uuidString; frameID=0; elapsed=0; evaluator=HoldEvaluator(); lastPhysicsTime=0; lastReadout=0; lastRecord=0; lastImageRecord=0
         lastPose=pose; jointVelocity=Array(repeating:0,count:6); gripVelocity=0; lastError=nil; phase="settling"
         scene.setPaused(false); startedWall=ProcessInfo.processInfo.systemUptime; actionCount=0; observationCount=0
-        recorder.append(["type":"reset","episode_id":episodeID,"task":try jsonObject(task)])
+        recorder.append(["type":"reset","episode_id":episodeID,"task":encodedTask])
         updateCameras(); displayRevision += 1
+    }
+    var canEditCube: Bool {
+        enabled && !hasOwner && !model.hasMotion && !recording && !captureBusy && !["configuring","settling"].contains(phase)
+    }
+    func placeCube(xMM:Double, yMM:Double, sizeMM:Double? = nil, yawDeg:Double? = nil) throws {
+        guard canEditCube, let scene else { throw ExperimentError.invalid("Set up a cube, then stop motion, external control, and recording before editing it. Wait for any image capture to finish.") }
+        var recipe=configuration
+        recipe.cubeXYMM=[xMM,yMM]; recipe.cubeSizeMM=sizeMM ?? task.cubeSizeMM
+        recipe.cubeYawDeg=yawDeg ?? task.cubeYawDeg; recipe.placementJitterMM=0
+        let trial=try recipe.validated(robot:model.robot,floor:model.floor)
+        let robotPose=model.current
+        try scene.validatePlacement(trial, robotPose:robotPose)
+        let encodedTask=try jsonObject(trial)
+        configuration=recipe
+        beginEpisode(trial:trial, pose:robotPose, scene:scene, encodedTask:encodedTask)
+    }
+    func armFloorPlacement(sizeMM:Double, yawDeg:Double) throws {
+        guard canEditCube else { throw ExperimentError.invalid("Stop motion, external control, and recording before placing the cube.") }
+        try CubePlacement.validate(xyMM:[0,0],sideMM:sizeMM,yawDeg:yawDeg)
+        placementSizeMM=sizeMM; placementYawDeg=yawDeg; placementMessage=nil; placingCube=true
+        model.resetCamera("Top")
+        if let viewport=model.viewport { viewport.window?.invalidateCursorRects(for:viewport) }
+    }
+    func cancelFloorPlacement() {
+        placingCube=false; placementMessage=nil
+        if let viewport=model.viewport { viewport.window?.invalidateCursorRects(for:viewport) }
+    }
+    func placeFromFloorClick(_ point:SIMD3<Double>?) {
+        guard let point else { placementMessage="That view ray does not meet the floor. Use Top view or choose a point below the horizon."; return }
+        do { try placeCube(xMM:point.x*1000,yMM:point.y*1000,sizeMM:placementSizeMM,yawDeg:placementYawDeg) }
+        catch { placementMessage=error.localizedDescription }
     }
     func disable() throws {
         guard !captureBusy, phase != "configuring" else { throw ExperimentError.invalid("Finish configuration/image capture before disabling.") }
@@ -83,6 +124,7 @@ import simd
         if recording { _ = try recorder.stop(); recording=false }
     }
     func stopArm(reason: String) {
+        cancelFloorPlacement()
         if phase == "configuring" {
             setupTask?.cancel(); setupTask=nil; model.setExternalControlLock(false)
             phase=enabled ? "paused" : "disabled"; lastError="Experiment setup cancelled."
@@ -144,7 +186,7 @@ import simd
             }
             if evaluator.success { phase="completed"; target=nil; recorder.append(["type":"success","episode_id":episodeID,"time":elapsed]) }
             else if elapsed >= task.timeoutSeconds { phase="timeout"; stopArm(reason:"timeout") }
-            else if abs(scene.cube.position.x) > 1 || abs(scene.cube.position.y) > 1 || scene.cube.position.z < -0.05 {
+            else if abs(scene.cube.position.x) > Float(CubePlacement.floorHalfExtentMM/1000) || abs(scene.cube.position.y) > Float(CubePlacement.floorHalfExtentMM/1000) || scene.cube.position.z < -0.05 {
                 phase="workspace_violation"; stopArm(reason:"workspace_violation")
             }
         }
@@ -183,7 +225,7 @@ import simd
         guard let scene else { return ["phase":phase,"error":lastError as Any? ?? NSNull()] }
         let sample=scene.sample()
         return ["episode_id":episodeID,"frame_id":frameID,"phase":phase,"task_time":elapsed,
-                "cube_pose":(try? jsonObject(scene.cubePose)) ?? [:],"clearance_mm":sample.clearanceMM,"tilt_deg":sample.tiltDeg,
+                "cube_pose":(try? jsonObject(scene.cubePose)) ?? [:],"cube_size_mm":task.cubeSizeMM,"cube_collider_size_mm":scene.cubeColliderSizeMM,"clearance_mm":sample.clearanceMM,"tilt_deg":sample.tiltDeg,
                 "linear_speed_mm_s":sample.linearSpeedMM,"angular_speed_deg_s":sample.angularSpeedDeg,
                 "velocity_measurement":"finite differences of post-physics cube poses", "solver_velocities":scene.solverVelocities,
                 "contacts":scene.contacts.sorted(),"contact_impulse_Ns":scene.impulses,"held":sample.leftContact && sample.rightContact && !sample.otherSupport,
@@ -214,7 +256,10 @@ import simd
             var values=try jsonObject(ExperimentTask()); patch.forEach { values[$0]=$1 }
             let next=try JSONDecoder().decode(ExperimentTask.self,from:JSONSerialization.data(withJSONObject:values))
             try configure(next); return ["accepted":true,"task":try jsonObject(next),"state":evaluation()]
-        case "rebot_get_task": return ["task":try jsonObject(task),"configuration":try jsonObject(configuration),"capabilities":["backend":"RealityKit","fixed_step":false,"rgb":true,"depth":false,"segmentation":false,"hardware":false,"external_control":true],"state":evaluation()]
+        case "rebot_place_cube":
+            try placeCube(xMM:args["x_mm"] as! Double,yMM:args["y_mm"] as! Double,sizeMM:args["size_mm"] as? Double,yawDeg:args["yaw_deg"] as? Double)
+            return ["accepted":true,"task":try jsonObject(task),"state":evaluation()]
+        case "rebot_get_task": return ["task":try jsonObject(task),"configuration":try jsonObject(configuration),"capabilities":["backend":"RealityKit","fixed_step":false,"rgb":true,"depth":false,"segmentation":false,"hardware":false,"external_control":true,"cube_placement":true,"cube_size_range_mm":[CubePlacement.minimumSideMM,CubePlacement.maximumSideMM],"floor_xy_range_mm":[-CubePlacement.floorHalfExtentMM,CubePlacement.floorHalfExtentMM]],"state":evaluation()]
         case "rebot_reset_episode": try reset(seed:(args["seed"] as? NSNumber)?.uint64Value); return evaluation()
         case "rebot_get_observation":
             guard enabled, !["settling","configuring","invalid","physics_error"].contains(phase) else { throw ExperimentError.invalid("Wait for episode configuration/reset/settling.") }
@@ -238,6 +283,7 @@ import simd
             return evaluation()
         case "rebot_controller_connect":
             guard enabled, phase == "running", !model.hasMotion else { throw ExperimentError.invalid("Start an episode and stop other motion before connecting.") }
+            cancelFloorPlacement()
             let token=try lease.acquire(episode:episodeID,provenance:args["provenance"] as! String,modelID:args["model_id"] as! String,now:ProcessInfo.processInfo.systemUptime)
             target=model.current
             model.setExternalControlLock(true)

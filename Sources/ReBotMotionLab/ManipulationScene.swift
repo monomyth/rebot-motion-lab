@@ -58,6 +58,7 @@ import simd
             body.physicsMotion=PhysicsMotionComponent()
             colliders[link.name]=body; root.addChild(body)
         }
+        try validatePlacement(task, robotPose:Pose(name:"Initial",joints:task.initialJoints,grip:task.initialGripperMM))
         viewport.world.addChild(root)
         subscriptions.append(viewport.scene.subscribe(to:PhysicsSimulationEvents.WillSimulate.self) { [weak self] event in
             MainActor.assumeIsolated {
@@ -113,6 +114,37 @@ import simd
         if let clock { CMTimebaseSetTime(clock,time:.zero) }
     }
     func setPaused(_ paused: Bool) { if let clock { CMTimebaseSetRate(clock,rate:paused ? 0 : 1) } }
+    /// Conservative per-part collision bounds reject occupied floor locations before mutation.
+    func validatePlacement(_ placement:ExperimentTask, robotPose:Pose) throws {
+        guard #available(macOS 15.0, *) else { return }
+        let cubeFromWorld=placement.initialCubePose.transform.inverse
+        let transforms=robot.transforms(robotPose.joints,grip:robotPose.grip)
+        let half=placement.cubeSizeMM/2000
+        for (name,body) in colliders {
+            guard let worldFromBody=transforms[name], let collision=body.collision else { continue }
+            let transform=cubeFromWorld * worldFromBody
+            for shape in collision.shapes {
+                let bounds=shape.bounds
+                var minimum=SIMD3<Double>(repeating:.infinity), maximum=SIMD3<Double>(repeating:-.infinity)
+                for x in [bounds.min.x,bounds.max.x] {
+                    for y in [bounds.min.y,bounds.max.y] {
+                        for z in [bounds.min.z,bounds.max.z] {
+                            let p=transform * SIMD4(Double(x),Double(y),Double(z),1)
+                            minimum=simd_min(minimum,SIMD3(p.x,p.y,p.z)); maximum=simd_max(maximum,SIMD3(p.x,p.y,p.z))
+                        }
+                    }
+                }
+                if minimum.x < half && maximum.x > -half && minimum.y < half && maximum.y > -half && minimum.z < half && maximum.z > -half {
+                    throw ExperimentError.invalid("The cube intersects the robot's collision bounds. Choose a clear point on the floor.")
+                }
+            }
+        }
+    }
+    var cubeColliderSizeMM: [Double] {
+        guard #available(macOS 15.0, *), let shape=cube.collision?.shapes.first else { return [] }
+        let size=shape.bounds.extents*1000
+        return [Double(size.x),Double(size.y),Double(size.z)]
+    }
     func remove() { setPaused(true); subscriptions.forEach { $0.cancel() }; subscriptions.removeAll(); root.removeFromParent() }
     func syncRobot(_ pose: Pose, dt: Double, teleport: Bool = false) {
         pendingPose=pose

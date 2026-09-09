@@ -36,6 +36,7 @@ struct RobotScene: NSViewRepresentable {
     private var linkEntities: [String: Entity] = [:]
     private var robot: Kinematics?
     private var previousPose: Pose?
+    private var floorPlacementGesture = false
     private var armMotion: [(entity: Entity, axis: SIMD3<Float>)] = []
     private var fingerMotion: [String: Entity] = [:]
     private var frameSubscription: (any Cancellable)?
@@ -187,8 +188,24 @@ struct RobotScene: NSViewRepresentable {
         let offset = SIMD3<Float>(cos(azimuth) * cos(elevation), sin(azimuth) * cos(elevation), sin(elevation)) * distance
         cameraEntity.look(at: target, from: target + offset, upVector: [0, 0, 1], relativeTo: nil)
     }
-    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(self) }
+    func floorPoint(at point:CGPoint) -> SIMD3<Double>? {
+        guard let ray=ray(through:point) else { return nil }
+        return CubePlacement.floorPoint(origin:SIMD3<Double>(ray.origin),direction:SIMD3<Double>(ray.direction))
+    }
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if owner?.experiment.placingCube == true { addCursorRect(bounds,cursor:.crosshair) }
+    }
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        floorPlacementGesture = owner?.experiment.placingCube == true && !event.modifierFlags.contains(.shift)
+        if floorPlacementGesture {
+            owner?.experiment.placeFromFloorClick(floorPoint(at:convert(event.locationInWindow,from:nil)))
+        }
+    }
+    override func mouseUp(with event:NSEvent) { floorPlacementGesture=false }
     override func mouseDragged(with event: NSEvent) {
+        guard !floorPlacementGesture else { return }
         if event.modifierFlags.contains(.shift) { pan(event); return }
         azimuth -= Float(event.deltaX) * 0.008
         elevation = min(.pi / 2 - 0.001, max(0.025, elevation + Float(event.deltaY) * 0.008))
@@ -207,7 +224,12 @@ struct RobotScene: NSViewRepresentable {
         updateCamera()
     }
     override func magnify(with event: NSEvent) { distance = min(4, max(0.25, distance * Float(1 - event.magnification))); updateCamera() }
-    override func keyDown(with event: NSEvent) { if event.keyCode == 53 { owner?.stop() } else { super.keyDown(with: event) } }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            if owner?.experiment.placingCube == true { owner?.experiment.cancelFloorPlacement() }
+            else { owner?.stop() }
+        } else { super.keyDown(with:event) }
+    }
 }
 
 func floatMatrix(_ m: simd_double4x4) -> simd_float4x4 {

@@ -6,6 +6,10 @@ struct ExperimentCatalogTests {
     @Test func malformedExperimentCommandsDoNotReachBackend() throws {
         let bad: [(String,[String:Any])] = [
             ("rebot_configure_task",["task":["cube_size_mm":100]]),
+            ("rebot_configure_task",["task":["cube_size_mm":9.99]]),
+            ("rebot_place_cube",["x_mm":350,"y_mm":0,"size_mm":90.01]),
+            ("rebot_place_cube",["x_mm":350,"y_mm":0,"size_mm":9.99]),
+            ("rebot_place_cube",["x_mm":true,"y_mm":0]),
             ("rebot_configure_task",["task":["input_mode":"secret"]]),
             ("rebot_configure_task",["task":["unknown":1]]),
             ("rebot_get_observation",["images":1]),
@@ -17,6 +21,10 @@ struct ExperimentCatalogTests {
         ]
         for (name,args) in bad { #expect(throws:ControlError.self) { try ControlCatalog.validate(args,for:name) } }
         try ControlCatalog.validate(["task":["cube_xy_mm":[350,20],"placement_jitter_mm":10,"seed":42]],for:"rebot_configure_task")
+        for size in [10.0,90] {
+            try ControlCatalog.validate(["x_mm":1500,"y_mm":-1500,"size_mm":size],for:"rebot_place_cube")
+            try ControlCatalog.validate(["task":["cube_xy_mm":[1500,-1500],"cube_size_mm":size]],for:"rebot_configure_task")
+        }
         try ControlCatalog.validate(["pose":["position_mm":[350,0,140],"quaternion_xyzw":[0,0.70710678118,0,0.70710678118]],"frame":"grasp"],for:"rebot_solve_pose")
     }
     @Test func legacyAndExperimentNamesStayAvailable() {

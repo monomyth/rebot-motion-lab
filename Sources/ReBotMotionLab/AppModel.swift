@@ -212,9 +212,9 @@ typealias PlaybackState = MotionPlayer.State
         experiment.stopArm(reason: "stop")
         stopPlaybackOnly()
     }
-    func applyExperimentPose(_ pose: Pose) {
+    func applyExperimentPose(_ pose: Pose, immediately: Bool = false) {
         current=pose; viewport?.applyPose(pose)
-        if ProcessInfo.processInfo.systemUptime-lastReadoutTime >= 1.0/15 { publishReadout() }
+        if immediately || ProcessInfo.processInfo.systemUptime-lastReadoutTime >= 1.0/15 { publishReadout() }
     }
     func setExternalControlLock(_ locked: Bool) {
         if externalControlLocked != locked { externalControlLocked=locked }

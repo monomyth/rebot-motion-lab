@@ -1,6 +1,6 @@
 # Cube experiment extension
 
-This branch adds 11 experiment tools and an external-controller session to the 12 original tools below. See [FLY_EXPERIMENT.md](docs/FLY_EXPERIMENT.md) for the full observation, action, image, lifecycle, and recording contracts. Configuration is asynchronous; acceptance precedes Ready. The original pose tools still require stopped motion.
+This branch adds 12 experiment tools and an external-controller session to the 12 original tools below. See [FLY_EXPERIMENT.md](docs/FLY_EXPERIMENT.md) for the full observation, action, image, lifecycle, and recording contracts. Configuration is asynchronous; acceptance precedes Ready. The original pose tools still require stopped motion.
 
 # Control ReBot Motion Lab through MCP
 

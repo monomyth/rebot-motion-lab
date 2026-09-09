@@ -2,6 +2,7 @@ import Foundation
 import simd
 
 public let degreesToRadians = Double.pi / 180
+public let maximumGripperOpeningMM = 90.0
 public let homePose: [Double] = [0, -95, -95, 10, 0, 0]
 // The source URDF's zero pose folds the upper arm and forearm back alongside one another.
 public let foldedPose: [Double] = [0, 0, 0, 0, 0, 0]
@@ -34,7 +35,7 @@ public struct Kinematics: Sendable {
     }
     public func transforms(_ joints: [Double], grip: Double = 60) -> [String: simd_double4x4] {
         let q = clampPose(joints)
-        let opening = (grip.isFinite ? clamp(grip, 0, 90) : 60) / 2000
+        let opening = (grip.isFinite ? clamp(grip, 0, maximumGripperOpeningMM) : 60) / 2000
         var links = ["base_link": matrix_identity_double4x4]
         var armIndex = 0
         for (i, joint) in definition.joints.enumerated() {
