@@ -13,18 +13,18 @@ The on-screen preview hides your install directory for screen sharing. Use **Cop
 Register the bundled executable using the full path to your copy of the app:
 
 ```sh
-codex mcp add rebot-motion-lab -- "/absolute/path/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP"
+codex mcp add rebot-motion-lab-grok -- "/absolute/path/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP"
 ```
 
 Alternatively add this server to your Codex configuration, replacing the command path:
 
 ```toml
-[mcp_servers.rebot-motion-lab]
+[mcp_servers.rebot-motion-lab-grok]
 command = "/absolute/path/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP"
 args = []
 ```
 
-Reload MCP tools in your client after registration. `codex mcp get rebot-motion-lab` shows the saved entry. The command syntax and configuration format follow the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Reload MCP tools in your client after registration. `codex mcp get rebot-motion-lab-grok` shows the saved entry. The name is `rebot-motion-lab-grok` so it does not collide with the original lab. The command syntax and configuration format follow the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 ## Other stdio MCP clients
 
@@ -33,7 +33,7 @@ Use **Copy MCP configuration** in the app. The configuration has this shape:
 ```json
 {
   "mcpServers": {
-    "rebot": {
+    "rebot-motion-lab-grok": {
       "command": "/absolute/path/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP",
       "args": []
     }

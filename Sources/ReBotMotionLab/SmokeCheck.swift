@@ -130,7 +130,7 @@ import simd
                     else { throw CheckError.failed("MCP preview must hide the install directory while copied configuration retains the executable") }
                 }
                 let configuration = try JSONSerialization.jsonObject(with: Data(control.configuration(codex: false).utf8)) as! [String: [String: [String: Any]]]
-                guard configuration["mcpServers"]?["rebot"]?["command"] as? String == control.executable else { throw CheckError.failed("MCP copied JSON changed the executable path") }
+                guard configuration["mcpServers"]?["rebot-motion-lab-grok"]?["command"] as? String == control.executable else { throw CheckError.failed("MCP copied JSON changed the executable path") }
                 results.append("MCP previews hide private install paths in both formats; copied configuration retains the correct executable")
                 model.mcpControl.setEnabled(true, persist: false)
                 guard model.mcpControl.enabled else { throw CheckError.failed("MCP listener did not start: \(model.mcpControl.status)") }

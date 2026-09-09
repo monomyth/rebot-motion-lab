@@ -81,7 +81,7 @@ With the app in Applications, a standard stdio configuration is:
 ```json
 {
   "mcpServers": {
-    "rebot": {
+    "rebot-motion-lab-grok": {
       "command": "/Applications/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP",
       "args": []
     }

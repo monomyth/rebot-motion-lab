@@ -52,9 +52,9 @@ import simd
             : executable
         if codex {
             let path = String(decoding: (try? JSONSerialization.data(withJSONObject: command, options: [.fragmentsAllowed, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
-            return "[mcp_servers.rebot-motion-lab]\ncommand = \(path)\nargs = []"
+            return "[mcp_servers.rebot-motion-lab-grok]\ncommand = \(path)\nargs = []"
         }
-        let json: [String: Any] = ["mcpServers": ["rebot": ["command": command, "args": [String]()]]]
+        let json: [String: Any] = ["mcpServers": ["rebot-motion-lab-grok": ["command": command, "args": [String]()]]]
         return String(decoding: (try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])) ?? Data(), as: UTF8.self)
     }
     func copyConfiguration(codex: Bool) {

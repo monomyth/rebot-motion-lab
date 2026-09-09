@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "rebot": {
+    "rebot-motion-lab-grok": {
       "command": "/Applications/ReBot Motion Lab.app/Contents/MacOS/ReBotMCP",
       "args": []
     }
