@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import RobotCore
+import RobotControl
 import simd
 
 enum WorkspacePage: String, CaseIterable, Identifiable {
@@ -60,12 +61,16 @@ enum ControlMode: String {
     @Published var showGrid = true
     @Published var showAxes = true
     @Published var showTrace = false
+    static let cameras = SceneCamera.names
     @Published var camera = "Orbit"
     @Published var cameraRevision = 0
     @Published var traceRevision = 0
     @Published var targetX = 542.9
     @Published var targetY = 0.0
     @Published var targetZ = 409.3
+    @Published var cubeX = 280.0
+    @Published var cubeY = 0.0
+    @Published var cubeSize = 40.0
     @Published var keepLevel = true
     @Published private(set) var controlMode: ControlMode = .scripted
     private(set) var cube = CubeState.spawn
@@ -73,6 +78,9 @@ enum ControlMode: String {
     @Published var error: String?
     @Published var sceneReady = false
     @Published var sceneError: String?
+    @Published private(set) var flyBrainRunning = false
+    @Published private(set) var flyBrainStatus = "Place the cube, then run the fly brain."
+    private var flyBrainProcess: Process?
     @Published var referenceSection: ReferenceSection = .overview
     @Published var referenceSearch = ""
     // A frozen RealityKit frame lets the development harness capture the native overlays too.
@@ -87,6 +95,7 @@ enum ControlMode: String {
     private var lastReadoutTime = 0.0
     private var isSequence = true
     private var completionStatus = "Sequence complete"
+    private var servoGoal: Pose?
     var tcp: SIMD3<Double> { robot.position(current.joints) * 1000 }
     var tcpRPY: SIMD3<Double> { robot.rpy(current.joints) * (180 / .pi) }
     var tcpLevel: Bool { robot.isLevel(current.joints, cubeTop: cube.attached ? cube.topNormal : nil) }
@@ -103,8 +112,11 @@ enum ControlMode: String {
     }
     private func commit(_ pose: Pose, previousGrip: Double, immediately: Bool) {
         current = pose
-        let end = robot.endLink(current.joints, grip: current.grip)
-        Grasp.update(previousGrip: previousGrip, pose: current, cube: &cube, endLink: end)
+        let links = robot.transforms(current.joints, grip: current.grip)
+        Grasp.update(
+            previousGrip: previousGrip, pose: current, cube: &cube, endLink: links["end_link"]!,
+            leftFinger: links["finger_left_link"]!, rightFinger: links["finger_right_link"]!
+        )
         viewport?.applyPose(current)
         viewport?.syncCube(cube)
         if immediately { publishReadout() }
@@ -173,13 +185,20 @@ enum ControlMode: String {
         status = "Moving to \(pose.name)"; publishReadout()
     }
     func reset() {
+        stopFlyBrain()
         stop(); controlMode = .scripted
         cube.restoreSpawn()
+        cubeX = cube.center.x * 1000
+        cubeY = cube.center.y * 1000
+        cubeSize = cube.size.x * 1000
         apply(.startup, immediately: true)
         viewport?.syncCube(cube)
         resetCamera("Orbit"); traceRevision += 1; useCurrentTarget(); status = "Reset to folded startup position"
     }
-    func resetCamera(_ name: String) { camera = name; cameraRevision += 1 }
+    func resetCamera(_ name: String) {
+        camera = Self.cameras.contains(name) ? name : "Orbit"
+        cameraRevision += 1
+    }
     func useCurrentTarget() { let p = tcp; targetX = p.x; targetY = p.y; targetZ = p.z }
     func solve() {
         guard !scriptedLocked else { return }
@@ -224,14 +243,18 @@ enum ControlMode: String {
         if playback == .playing {
             player.advance(seconds: seconds, speed: isSequence ? speed : 100)
             progress = player.progress
-            // The complete route was checked before starting, including skipped waypoint
-            // boundaries after a long frame. Rendering remains independent of collision work.
             apply(player.current, immediately: false)
             let index = isSequence ? player.index : nil
             if activeWaypoint != index { activeWaypoint = index }
             readoutElapsed += max(0, seconds)
             if readoutElapsed >= 1.0 / 15 || player.state == .stopped { publishReadout() }
             if player.state == .stopped { playback = .stopped; status = completionStatus }
+        } else if controlMode == .servo, player.state == .playing {
+            // Same quintic interpolator as Play on the example sequence.
+            player.advance(seconds: seconds, speed: 100)
+            apply(player.current, immediately: false)
+            readoutElapsed += max(0, seconds)
+            if readoutElapsed >= 1.0 / 15 || player.state == .stopped { publishReadout() }
         }
         tickCubeGravity(seconds)
     }
@@ -247,6 +270,7 @@ enum ControlMode: String {
     }
     func stop() {
         setManualTracking(false)
+        servoGoal = nil
         player.stop(); playback = .stopped; activeWaypoint = nil; progress = 0
         status = controlMode == .servo ? "Servo mode" : "Motion stopped"; publishReadout()
     }
@@ -254,6 +278,8 @@ enum ControlMode: String {
         stop(); setManualTracking(false); controlMode = .servo; page = .simulator; status = "Servo mode"; publishReadout()
     }
     func exitServo() {
+        servoGoal = nil
+        player.stop()
         controlMode = .scripted
         if playback != .stopped { stop() }
         status = "Scripted mode"; publishReadout()
@@ -261,18 +287,38 @@ enum ControlMode: String {
     @discardableResult func servoTo(_ pose: Pose) -> Pose {
         guard controlMode == .servo, !manualMoving else { return current }
         setManualTracking(false)
-        apply(pose, immediately: true)
-        return current
+        let allowed = floor.limited(from: current, to: pose, cube: cube)
+        servoGoal = allowed
+        if allowed.joints == current.joints, allowed.grip == current.grip {
+            player.stop()
+            return current
+        }
+        player.start([allowed], from: current)
+        return allowed
     }
     func applyCube(_ next: CubeState) {
         cube = next
         if cube.attached {
             cube = Grasp.aligned(cube, endLink: robot.endLink(current.joints, grip: current.grip))
         } else {
-            cube.restOnFloor()
+            cube.sitOnFloor()
         }
+        cubeX = cube.center.x * 1000
+        cubeY = cube.center.y * 1000
+        cubeSize = cube.size.x * 1000
         viewport?.syncCube(cube)
         publishReadout()
+    }
+    func placeCube() {
+        guard !controlsLocked || flyBrainRunning else { return }
+        do {
+            let next = try cube.placing(
+                center: SIMD3(cubeX, cubeY, 0) / 1000,
+                size: SIMD3(repeating: cubeSize / 1000)
+            )
+            applyCube(next)
+            status = String(format: "Cube placed · %.0f mm at %.0f, %.0f mm", cubeSize, cubeX, cubeY)
+        } catch { self.error = error.localizedDescription }
     }
     func exportTrajectory() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "B601-DM-trajectory.json"
@@ -294,6 +340,110 @@ enum ControlMode: String {
             stop(); waypoints = poses; speed = file.speed_percent; status = "Imported \(poses.count) waypoints"
         } catch { self.error = error.localizedDescription }
     }
+    func startFlyBrain() { launchFlyBrainScript("scripts/run_policy.py") }
+
+    func startFlyBrainLearn() { launchFlyBrainScript("scripts/run_learn.py") }
+
+    private func launchFlyBrainScript(_ relative: String) {
+        flyBrainStatus = "Starting \(relative)…"
+        status = "Fly brain starting"
+        try? "\(Date()) \(relative)\n".write(toFile: "/tmp/rebot-flybrain-ui.log", atomically: true, encoding: .utf8)
+        guard !flyBrainRunning else { return }
+        if !mcpControl.enabled { mcpControl.setEnabled(true) }
+        guard let launch = FlyBrainLaunch.paths() else {
+            error = "Fly brain controller not found. Expected /Users/monomyth/code/grok/fly-brain/controller/.venv."
+            flyBrainStatus = "Controller not found."
+            return
+        }
+        let script = launch.home.appendingPathComponent(relative)
+        guard FileManager.default.fileExists(atPath: script.path) else {
+            error = "Missing \(relative)"
+            flyBrainStatus = error ?? ""
+            return
+        }
+        let process = Process()
+        // Keep the venv stub. Resolving the symlink jumps to Homebrew Python and drops site-packages.
+        process.executableURL = launch.python
+        process.arguments = [script.path, "--mcp", launch.mcp.path]
+        process.currentDirectoryURL = launch.home
+        var environment = ProcessInfo.processInfo.environment
+        let venv = launch.home.appendingPathComponent(".venv").path
+        environment["VIRTUAL_ENV"] = venv
+        environment["PATH"] = "\(venv)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        environment["REBOT_MCP_NO_LAUNCH"] = "1"
+        environment["MALECNS_HOME"] = FlyBrainLaunch.malecnsHome
+        environment["FLYBRAIN_DATA"] = FlyBrainLaunch.projectData
+        environment["REBOT_CONTROL_DIRECTORY"] = LocalSocket.directory.path
+        environment["PYTHONUNBUFFERED"] = "1"
+        environment["PYTHONPATH"] = launch.home.path
+        process.environment = environment
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        let logURL = URL(fileURLWithPath: "/tmp/rebot-flybrain-ui.log")
+        FileManager.default.createFile(atPath: logURL.path, contents: Data())
+        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            if let log = try? FileHandle(forWritingTo: logURL) {
+                log.seekToEndOfFile()
+                log.write(data)
+                try? log.close()
+            }
+            let chunk = String(data: data, encoding: .utf8) ?? ""
+            let line = chunk.split(whereSeparator: \.isNewline).last.map(String.init) ?? chunk
+            guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            Task { @MainActor in
+                self?.flyBrainStatus = String(line.prefix(240))
+            }
+        }
+        process.terminationHandler = { [weak self] finished in
+            Task { @MainActor in
+                guard let self else { return }
+                output.fileHandleForReading.readabilityHandler = nil
+                if let leftover = try? output.fileHandleForReading.readToEnd(), let log = try? FileHandle(forWritingTo: logURL) {
+                    log.seekToEndOfFile()
+                    log.write(leftover)
+                    try? log.close()
+                }
+                self.flyBrainProcess = nil
+                self.flyBrainRunning = false
+                if self.controlMode == .servo { self.exitServo() }
+                let text = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+                let tail = text.split(whereSeparator: \.isNewline).suffix(8).joined(separator: "\n")
+                if finished.terminationStatus == 0 {
+                    self.flyBrainStatus = "Fly brain finished."
+                    self.status = "Fly brain finished"
+                } else {
+                    self.flyBrainStatus = tail.isEmpty ? "Fly brain exited \(finished.terminationStatus). See /tmp/rebot-flybrain-ui.log" : String(tail.prefix(500))
+                    self.status = "Fly brain stopped"
+                    self.error = self.flyBrainStatus
+                }
+            }
+        }
+        do {
+            try process.run()
+            flyBrainProcess = process
+            flyBrainRunning = true
+            flyBrainStatus = "Starting \(launch.python.lastPathComponent)…"
+            status = "Fly brain starting"
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func stopFlyBrain() {
+        guard let process = flyBrainProcess else {
+            flyBrainRunning = false
+            return
+        }
+        process.terminate()
+        flyBrainProcess = nil
+        flyBrainRunning = false
+        if controlMode == .servo { exitServo() }
+        flyBrainStatus = "Fly brain stopped."
+        status = "Fly brain stopped"
+    }
+
     func saveReference() {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "B601-DM-actuator-settings.md"
         guard panel.runModal() == .OK, let url = panel.url else { return }

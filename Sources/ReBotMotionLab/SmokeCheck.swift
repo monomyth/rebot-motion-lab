@@ -140,7 +140,7 @@ import simd
                 try await Task.sleep(for: .milliseconds(400))
                 try captureWindow(to: folder.appendingPathComponent("mcp-control-large-text.png"))
                 Typography.shared.reset()
-                try checkManualMCP(model)
+                try await checkManualMCP(model)
                 model.mcpControl.setEnabled(false, persist: false)
                 guard !model.mcpControl.enabled else { throw CheckError.failed("MCP control did not stop") }
                 results.append("MCP control page, manual motion state/rejection/stop, and enable/disable listener checks passed")
@@ -195,21 +195,21 @@ import simd
         guard model.current == hidden, !model.manualMoving else { throw CheckError.failed("Hidden scene resumed manual input") }
         model.reset()
     }
-    private static func checkManualMCP(_ model: AppModel) throws {
+    private static func checkManualMCP(_ model: AppModel) async throws {
         let control = model.mcpControl
         model.setJoint(0, 45)
         model.setManualTracking(true)
-        let result = try control.handle(["tool": "rebot_get_state", "arguments": [:]])
+        let result = try await control.handle(["tool": "rebot_get_state", "arguments": [:]])
         guard result["manual_motion"] as? Bool == true,
               (result["manual_target"] as? [String: Any])?["joints_deg"] as? [Double] == model.poseControls.pose.joints,
               result["joints_deg"] as? [Double] == model.current.joints else { throw CheckError.failed("MCP manual/actual pose state") }
         var rejected = false
-        do { _ = try control.handle(["tool": "rebot_set_joint", "arguments": ["joint": 1, "angle_deg": 10.0]]) }
+        do { _ = try await control.handle(["tool": "rebot_set_joint", "arguments": ["joint": 1, "angle_deg": 10.0]]) }
         catch { rejected = true }
         guard rejected, model.poseControls.pose.joints[0] == 45 else { throw CheckError.failed("MCP accepted a competing manual move") }
-        _ = try control.handle(["tool": "rebot_playback", "arguments": ["action": "stop"]])
+        _ = try await control.handle(["tool": "rebot_playback", "arguments": ["action": "stop"]])
         model.advance(seconds: 1)
-        let stopped = try control.handle(["tool": "rebot_get_state", "arguments": [:]])
+        let stopped = try await control.handle(["tool": "rebot_get_state", "arguments": [:]])
         guard !model.manualMoving, stopped["manual_target"] is NSNull else { throw CheckError.failed("MCP stop retained manual target") }
         model.setJoint(0, 45)
         model.setManualTracking(true)

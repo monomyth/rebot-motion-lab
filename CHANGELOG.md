@@ -2,7 +2,7 @@
 
 ## 1.6.0 — 2026-09-09
 
-- Added a kinematic scene cube on the base plane (default 40 mm at 280 mm forward), MCP `rebot_set_cube`, and reset-to-spawn.
+- Added a kinematic scene cube on the base plane (default 40 mm at 280 mm forward), MCP `rebot_set_cube`, and reset-to-spawn. Place at any X/Y on the plane; size is 10–90 mm (fully open gripper) on every edge, not just height.
 - Closing the gripper around the cube to about the cube width attaches it; opening 12 mm past that width releases it. Pads cannot close through the cube. The wrist/arm cannot pass through an unattached cube. A held cube participates in floor stops. No payload physics.
 - Added level IK (`rebot_move_to_pose`, Keep tool level) so the tool +Z or attached cube top stays within 5° of world +Z. Optional `fingers_down` points tool +X up. State reports `tcp_rpy_deg` and `tcp_level`.
 - Added `rebot_capture_view` JPEG snapshots of the RealityKit camera (default 320×240) for Front/Top/Orbit without stealing the user view unless `apply` is true. Top/Front framing includes the default cube.

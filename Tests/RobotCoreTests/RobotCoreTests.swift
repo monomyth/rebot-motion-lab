@@ -130,6 +130,41 @@ struct RobotCoreTests {
         expectTrue(FileManager.default.fileExists(atPath: Assets.url("model/LICENSE.txt").path))
         expectTrue(FileManager.default.fileExists(atPath: Assets.url("MOTORBRIDGE-LICENSE.txt").path))
     }
+    @Test func testFrontAndGripperCameraOptics() {
+        expectEqual(SceneCamera.names, ["Orbit", "Front", "Top", "Gripper"])
+        expectEqual(Double(FrontCameraPreset.azimuth), 0, accuracy: 1e-6)
+        expectEqual(Double(FrontCameraPreset.elevation), Double.pi / 4, accuracy: 1e-6)
+        expectEqual(Double(FrontCameraPreset.optics.verticalFOVDegrees), 68, accuracy: 1e-6)
+        expectEqual(Double(FrontCameraPreset.optics.nearMeters), 0.17, accuracy: 1e-6)
+        expectTrue(FrontCameraPreset.target.x > 0)
+        expectEqual(Double(GripperCameraPreset.pitchRadians), 15 * Double.pi / 180, accuracy: 1e-6)
+        expectEqual(Double(GripperCameraPreset.fromTCP.x), -0.078, accuracy: 1e-6)
+        expectEqual(Double(GripperCameraPreset.fromTCP.y), 0, accuracy: 1e-6)
+        expectEqual(Double(GripperCameraPreset.fromTCP.z), 0.065, accuracy: 1e-6)
+        expectEqual(Double(GripperCameraPreset.optics.verticalFOVDegrees), 68, accuracy: 1e-6)
+        expectEqual(Double(GripperCameraPreset.optics.nearMeters), 0.04, accuracy: 1e-6)
+        let look = GripperCameraPreset.lookDirection
+        expectEqual(Double(look.y), 0, accuracy: 1e-6)
+        expectTrue(look.x > 0 && look.z < 0)
+    }
+    @Test func testFrustumUsesWorldAxesNotParentLocal() {
+        let yaw: Float = 57 * .pi / 180
+        let worldForward = SIMD3<Float>(-sin(yaw), 0, -cos(yaw))
+        let worldRight = SIMD3<Float>(cos(yaw), 0, -sin(yaw))
+        let worldUp = SIMD3<Float>(0, 1, 0)
+        let cam = SIMD3<Float>(0.3, 0, 0.2)
+        let ahead = cam + worldForward * 0.2
+        expectTrue(CameraFrustum.contains(
+            worldPoint: ahead, cameraPos: cam, forward: worldForward, right: worldRight, up: worldUp,
+            fovYDegrees: 68, aspect: 4 / 3
+        ))
+        let parentLocalForward = SIMD3<Float>(0, 0, -1)
+        let parentLocalRight = SIMD3<Float>(1, 0, 0)
+        expectFalse(CameraFrustum.contains(
+            worldPoint: ahead, cameraPos: cam, forward: parentLocalForward, right: parentLocalRight, up: worldUp,
+            fovYDegrees: 68, aspect: 4 / 3
+        ))
+    }
 }
 
 private func expectEqual<T: Equatable>(_ a: T, _ b: T, sourceLocation: SourceLocation = #_sourceLocation) { #expect(a == b, sourceLocation: sourceLocation) }

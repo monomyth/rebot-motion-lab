@@ -101,8 +101,9 @@ public struct Kinematics: Sendable {
         }
         return Solution(joints: q, error: simd_distance(position(q), target))
     }
-    /// keepLevel: tool +Z up; unattached picks also roll so the jaws open along world ±Y.
-    /// fingersDown: tool +X toward world +Z so the pads hang down around a floor cube.
+    /// keepLevel: tool +Z up; unattached picks roll so the jaws open along world ±Y.
+    /// fingersDown: tool +X along world −Z (fingertips down, wrist up). TCP is still the
+    /// fingertip. Pads straddle a floor cube; a corner or edge of the solid is enough.
     public func solve(target: SIMD3<Double>, initial: [Double], keepLevel: Bool, cubeTopInTool: SIMD3<Double>?, fingersDown: Bool = false, iterations: Int = 400) -> Solution {
         if !keepLevel, !fingersDown { return solve(target: target, initial: initial, iterations: iterations) }
         let positioned = solve(target: target, initial: initial, iterations: iterations)
@@ -141,7 +142,8 @@ public struct Kinematics: Sendable {
         let pos = translation(T) - target
         let ori: SIMD3<Double>
         if fingersDown {
-            ori = simd_normalize(toolX(q)) - SIMD3(0, 0, 1)
+            let xErr = simd_normalize(toolX(q)) - SIMD3(0, 0, -1)
+            ori = SIMD3(xErr.x, xErr.z, simd_dot(simd_normalize(toolY(q)), SIMD3(1, 0, 0)))
         } else if let local = cubeTopInTool {
             ori = simd_normalize(rotation(T) * local) - SIMD3(0, 0, 1)
         } else {

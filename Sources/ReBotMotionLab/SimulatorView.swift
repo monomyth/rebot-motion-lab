@@ -22,6 +22,8 @@ struct SimulatorView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         JointControlsView(model: model)
                         Divider()
+                        cubeControls
+                        Divider()
                         targetControls
                     }.padding(20)
                 }.frame(minWidth: 285, idealWidth: 310 * min(fontScale, 1.25), maxWidth: 345 * min(fontScale, 1.25))
@@ -45,8 +47,10 @@ struct SimulatorView: View {
             VStack {
                 HStack {
                     Picker("Camera", selection: Binding(get: { model.camera }, set: { model.resetCamera($0) })) {
-                        Text("Orbit").tag("Orbit"); Text("Front").tag("Front"); Text("Top").tag("Top")
-                    }.pickerStyle(.segmented).frame(width: 210 * fontScale)
+                        ForEach(AppModel.cameras, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }.pickerStyle(.segmented).frame(width: 300 * fontScale)
                     Spacer()
                     Button { model.resetCamera(model.camera) } label: { Image(systemName: "viewfinder") }.help("Reset camera")
                 }
@@ -68,8 +72,45 @@ struct SimulatorView: View {
                 ContentUnavailableView("3D model unavailable", systemImage: "exclamationmark.triangle", description: Text(error))
             }
         }
+        .overlay(alignment: .topTrailing) {
+            VStack(alignment: .trailing, spacing: 4) {
+                BrainOverlayView()
+                    .allowsHitTesting(false)
+            }
+            .padding(.trailing, 16)
+            .padding(.top, 52)
+        }
         .overlay(alignment: .top) {
             Text("Drag to orbit · Shift-drag to pan · Scroll to zoom").labFont(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 55).allowsHitTesting(false)
+        }
+    }
+    private var cubeControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Scene cube", subtitle: "On the base plane · 10–90 mm")
+            HStack(spacing: 8) {
+                targetField("X", $model.cubeX, onSubmit: model.placeCube)
+                targetField("Y", $model.cubeY, onSubmit: model.placeCube)
+                targetField("Size", $model.cubeSize, onSubmit: model.placeCube)
+            }
+            HStack {
+                Text("10–90 mm on a side. The cube always sits on the plane.").labFont(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Place on plane") { model.placeCube() }.buttonStyle(.borderedProminent).foregroundStyle(.black)
+            }.controlSize(.small)
+            Divider()
+            Text("Fly brain").labFont(.headline)
+            Text("Run = scripted pick. Learn = same scripted pick while the brain watches (camera → R1–R6, dopamine on KC→MBON).").labFont(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button(model.flyBrainRunning ? "Running…" : "Run fly brain") { model.startFlyBrain() }
+                    .disabled(model.flyBrainRunning)
+                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(.black)
+                Button("Learn") { model.startFlyBrainLearn() }
+                    .disabled(model.flyBrainRunning)
+                Button("Stop") { model.stopFlyBrain() }.disabled(!model.flyBrainRunning)
+                Spacer()
+            }.controlSize(.small)
+            Text(model.flyBrainStatus).labFont(.caption).foregroundStyle(.secondary)
         }
     }
     private var targetControls: some View {
@@ -90,10 +131,12 @@ struct SimulatorView: View {
                 .labFont(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.disabled(model.scriptedLocked)
     }
-    private func targetField(_ label: String, _ value: Binding<Double>) -> some View {
+    private func targetField(_ label: String, _ value: Binding<Double>, onSubmit: (() -> Void)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label).labFont(.caption2).foregroundStyle(.secondary)
-            TextField(label, value: value, format: .number.precision(.fractionLength(1))).textFieldStyle(.roundedBorder).labFont(.system(.caption, design: .monospaced))
+            TextField(label, value: value, format: .number.precision(.fractionLength(1)))
+                .textFieldStyle(.roundedBorder).labFont(.system(.caption, design: .monospaced))
+                .onSubmit { onSubmit?() }
         }
     }
     private var sequence: some View {
@@ -173,7 +216,7 @@ private struct JointControlsView: View {
                     onEditingChanged: { model.setManualTracking($0) }
                 )
             }
-        }.disabled(model.controlsLocked)
+        }.disabled(model.controlsLocked || model.flyBrainRunning)
     }
     private var gripperControls: some View {
         JointSliderRow(
@@ -185,7 +228,7 @@ private struct JointControlsView: View {
             range: 0...90,
             displayed: model.poseControls.pose.grip,
             controls: model.poseControls, jointIndex: nil,
-            locked: model.controlsLocked,
+            locked: model.controlsLocked || model.flyBrainRunning,
             fontScale: fontScale,
             rangeCaption: ("Closed · 0", "Open · 90"),
             onChange: { model.setGrip($0) },

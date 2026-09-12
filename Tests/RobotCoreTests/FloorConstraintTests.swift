@@ -65,6 +65,27 @@ struct FloorConstraintTests {
             #expect(floor.minimumHeight(Motion.interpolate(from: from, to: stopped, fraction: Double(i)/100)) >= FloorConstraint.height)
         }
     }
+    @Test func contactWithCubeAllowsRetract() throws {
+        let (robot, floor) = try setup()
+        let cube = CubeState.spawn
+        let through = robot.solve(target: cube.center, initial: homePose)
+        #expect(through.success)
+        var overlapping = pose()
+        overlapping.joints = through.joints
+        overlapping.grip = 60
+        overlapping = floor.limited(from: pose(), to: overlapping, cube: cube)
+        let pen = floor.cubePenetration(overlapping, cube: cube)
+        var retract = overlapping
+        retract.joints = homePose
+        let left = floor.limited(from: overlapping, to: retract, cube: cube)
+        #expect(floor.cubePenetration(left, cube: cube) <= pen + 1e-6)
+        if pen > 0.0005 {
+            #expect(left.joints != overlapping.joints)
+        }
+        let pushed = floor.limited(from: overlapping, to: overlapping, cube: cube)
+        #expect(abs(pushed.joints[1] - overlapping.joints[1]) < 1e-9)
+    }
+
     @Test func unattachedCubeStopsTheWrist() throws {
         let (robot, floor) = try setup()
         let cube = CubeState.spawn

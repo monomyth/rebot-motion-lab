@@ -176,15 +176,30 @@ with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
             cube = client.state()["objects"]["cube"]
             assert cube["present"] and not cube["attached"]
             assert abs(cube["center_mm"]["x"] - 280) < 1
-            client.call("rebot_set_cube", {"x_mm": 280, "y_mm": 0, "z_mm": -50}, fails=True)
+            limits = client.state()["cube_size_limits_mm"]
+            assert abs(limits[0] - 10) < 1e-6 and abs(limits[1] - 90) < 1e-6
+            client.call("rebot_set_cube", {"size_mm": 5}, fails=True)
+            client.call("rebot_set_cube", {"size_mm": 100}, fails=True)
             assert abs(client.state()["objects"]["cube"]["center_mm"]["x"] - 280) < 1
-            client.call("rebot_set_cube", {"x_mm": 300, "y_mm": 40, "z_mm": 20, "size_mm": 40, "yaw_deg": 15})
+            client.call("rebot_set_cube", {"size_mm": 10})
+            assert abs(client.state()["objects"]["cube"]["size_mm"] - 10) < 0.1
+            client.call("rebot_set_cube", {"size_mm": 90})
+            assert abs(client.state()["objects"]["cube"]["size_mm"] - 90) < 0.1
+            client.call("rebot_set_cube", {"x_mm": 300, "y_mm": 40, "z_mm": 400, "size_mm": 40, "yaw_deg": 15})
             placed = client.state()["objects"]["cube"]
-            assert abs(placed["center_mm"]["x"] - 300) < 0.1 and not placed["attached"]
+            assert abs(placed["center_mm"]["x"] - 300) < 0.1
+            assert abs(placed["center_mm"]["y"] - 40) < 0.1
+            assert abs(placed["size_mm"] - 40) < 0.1
+            assert abs(placed["center_mm"]["z"] - 19) < 0.5
+            assert not placed["attached"]
             client.call("rebot_playback", {"action": "reset"})
             restored = client.state()["objects"]["cube"]
-            assert abs(restored["center_mm"]["x"] - 280) < 1 and not restored["attached"]
-            checks.append("Cube spawn, floor rejection, placement, and reset restore")
+            assert abs(restored["center_mm"]["x"] - 300) < 0.1
+            assert abs(restored["center_mm"]["y"] - 40) < 0.1
+            assert abs(restored["size_mm"] - 40) < 0.1
+            assert not restored["attached"]
+            client.call("rebot_set_cube", {"x_mm": 280, "y_mm": 0, "size_mm": 40, "yaw_deg": 0})
+            checks.append("Cube XY placement, 10–90 mm size, ignored Z, reset-to-spawn")
             client.call("rebot_apply_preset", {"name": "Ready"})
             client.wait_stopped()
             client.call("rebot_set_control_mode", {"mode": "servo"})
@@ -202,13 +217,15 @@ with tempfile.TemporaryDirectory(prefix="rebot-mcp-", dir="/tmp") as directory:
             leveled = client.wait_stopped()
             assert leveled["tcp_level"] is True
             assert abs(leveled["tcp_mm"]["x"] - 280) < 2
-            capture = client.call("rebot_capture_view", {"camera": "Top", "width": 320, "height": 240, "apply": False})
-            assert capture["width"] == 320 and capture["cube_in_view"] is True
-            assert client.state()["view"]["camera"] == leveled["view"]["camera"]
-            jpeg = base64.b64decode(capture["jpeg_base64"])
-            assert jpeg[:2] == b"\xff\xd8"
-            (options.output / "capture-top.jpg").write_bytes(jpeg)
-            checks.append("Level IK, Top capture of arm+cube, camera apply=false")
+            kept = client.state()["view"]["camera"]
+            for name in ("Front", "Gripper"):
+                capture = client.call("rebot_capture_view", {"camera": name, "width": 320, "height": 240, "apply": False})
+                assert capture["width"] == 320
+                jpeg = base64.b64decode(capture["jpeg_base64"])
+                assert jpeg[:2] == b"\xff\xd8"
+                (options.output / f"capture-{name.lower()}.jpg").write_bytes(jpeg)
+            assert client.state()["view"]["camera"] == kept
+            checks.append("Level IK, Front+Gripper capture, camera apply=false")
             client.call("rebot_playback", {"action": "reset"})
             assert client.state()["joints_deg"] == [0]*6 and client.state()["gripper_mm"] == 0
             checks.append("Malformed IPC recovery and reset to folded startup")

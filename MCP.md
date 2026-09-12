@@ -47,14 +47,14 @@ The helper opens its containing app on the first tool call if no simulator is li
 
 | Tool | Purpose |
 | --- | --- |
-| `rebot_get_state` | Live joint angles, gripper, TCP, limits, playback, waypoints, presets, view, app instance ID, and command revision. |
+| `rebot_get_state` | Live joint angles, gripper, TCP, cube, size limits (10–90 mm), playback, waypoints, presets, view, app instance ID, and command revision. |
 | `rebot_move_joints` | Smooth six-joint motion with optional gripper opening. |
 | `rebot_set_joint` | Smoothly change one joint, numbered 1–6. |
 | `rebot_set_gripper` | Set opening from 0 to 90 mm. |
 | `rebot_move_to_position` | Position-only IK using X/Y/Z in mm in the robot base frame. Disabled in servo mode. |
 | `rebot_move_to_pose` | Cartesian IK with optional `keep_level` (tool +Z / cube top along world +Z) or `fingers_down`. |
-| `rebot_set_cube` | Place, resize, hide, or drop the kinematic scene cube. Centers in mm. Rejects poses through the floor. |
-| `rebot_capture_view` | JPEG of the RealityKit scene camera (default 320×240, max 640×480). Optional `camera`; `apply: true` switches the live view. |
+| `rebot_set_cube` | Place or resize the cube on the base plane. `x_mm` / `y_mm` in the robot base frame; `size_mm` 10–90 (open gripper). Z is ignored. |
+| `rebot_capture_view` | JPEG of the live RealityKit camera (default 320×240, max 640×480). `apply: true` plus `camera` switches the live view first. `apply: false` (default) does not move the camera. |
 | `rebot_set_control_mode` | `scripted` (default quintic MCP) or `servo` (immediate slider-style updates). |
 | `rebot_servo_joints` | Immediate floor-limited joints/gripper. Requires servo mode. |
 | `rebot_servo_tcp` | Immediate IK from the current pose. Requires servo mode. |
@@ -77,9 +77,9 @@ Resources: `rebot://state` provides the live state as JSON; `rebot://actuators` 
 
 State always reports actual rendered joint angles, gripper opening, and TCP. Interactive sliders apply that pose immediately. While a slider is held, `manual_motion` is true and `manual_target` matches the live pose; otherwise `manual_target` is null. New pose or sequence commands are rejected while a slider is tracking or playback is active.
 
-Example prompts: “Unfold to Ready, then rotate the base to 30 degrees.” “Read the tool position and move it 10 mm upward.” “Save this pose as Pick, close the gripper, and save another waypoint.” “Fold the robot back to its startup position.”
+Example prompts: “Unfold to Ready, then rotate the base to 30 degrees.” “Place a 25 mm cube at x=220 mm, y=−40 mm on the plane.” “Read the tool position and move it 10 mm upward.” “Save this pose as Pick, close the gripper, and save another waypoint.” “Fold the robot back to its startup position.”
 
-Angles are degrees; positions and gripper opening are millimeters. Invalid types, unknown fields, out-of-range angles, and failed IK return tool errors without starting motion. MCP moves use the simulator's eased interpolation and nominal peak limits of 60°/s and 60 mm/s. Sequence speed changes apply to sequence playback; individual pose commands use nominal speed. Navigating away from the Simulator pauses playback and ends slider tracking. Keep the simulator view visible while running trajectories.
+Angles are degrees; positions, gripper opening, and cube size are millimeters. Cube size is 10–90 mm (fully open gripper); the cube always sits on the base plane. Invalid types, unknown fields, out-of-range angles, and failed IK return tool errors without starting motion. MCP moves use the simulator's eased interpolation and nominal peak limits of 60°/s and 60 mm/s. Sequence speed changes apply to sequence playback; individual pose commands use nominal speed. Navigating away from the Simulator pauses playback and ends slider tracking. Keep the simulator view visible while running trajectories.
 
 Waypoints are session data. Export a trajectory from the app to keep them. `rebot_set_sequence` replaces all waypoints, while reset preserves the sequence and returns the arm immediately to folded startup.
 
@@ -89,7 +89,7 @@ The MCP client launches ReBotMCP as a subprocess. Its stdout contains only newli
 
 The helper talks to the GUI through a Unix domain socket in a private per-user temporary directory named `rebot-motionlab-grok-<uid>` so it does not share a lock with the original lab. The directory is mode 0700, the socket mode 0600, both ends verify the peer's user ID, and an instance lock prevents two grok-lab apps from taking over the same socket. There is no HTTP listener or external network endpoint. IPC messages are bounded to 1 MiB and have I/O timeouts. If a connection fails after a command was sent, the helper does not retry it automatically; read state before retrying.
 
-These tools operate the **kinematic simulator only**. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips and a **held** scene cube. An unattached cube blocks the wrist and arm; the pads stop at about the cube width instead of closing through it. Unattached cubes fall under gravity onto the plane. Closing the gripper around the cube to about the cube width attaches it; opening 12 mm past that width releases it. There is no payload mass or bounce. Neural/fly-brain controllers must live in an external client and drive servo or scripted tools. Targets below the floor are rejected; an obstructed path stops at contact. State includes the cube, `tcp_level`, floor height, and minimum moving-mesh height.
+These tools operate the **kinematic simulator only**. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips and a **held** scene cube. `rebot_set_cube` places the cube at any X/Y on that plane and resizes it from 10 mm to 90 mm (fully open gripper); Z is ignored. An unattached cube blocks the wrist and arm; the pads stop at about the cube width instead of closing through it. Unattached cubes fall under gravity onto the plane. Closing the gripper around the cube to about the cube width attaches it; opening 12 mm past that width releases it. There is no payload mass or bounce. Neural/fly-brain controllers must live in an external client and drive servo or scripted tools. Targets below the floor are rejected; an obstructed path stops at contact. State includes the cube, `cube_size_limits_mm`, `tcp_level`, floor height, and minimum moving-mesh height.
 
 A floor pick that stays clear of the plane: `rebot_move_to_pose` with `keep_level` to the cube XY at about **48 mm**, then `rebot_set_gripper` to cube width + 2 mm, lift with `keep_level`, then open to 60 mm to drop.
 

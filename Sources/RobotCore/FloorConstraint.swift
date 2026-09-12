@@ -25,6 +25,19 @@ public struct FloorConstraint: Sendable {
         radiusBound = robot.definition.joints.reduce(0) { $0 + simd_length(vector($1.xyz)) }
             + (supports.flatMap(\.points).map(simd_length).max() ?? 0) + 0.09
     }
+    public func lowestSupport(_ pose: Pose) -> (name: String, height: Double) {
+        let transforms = robot.transforms(pose.joints, grip: pose.grip)
+        var name = ""
+        var height = Double.infinity
+        for hull in supports {
+            let m = transforms[hull.name]!
+            for p in hull.points {
+                let z = m[0].z * p.x + m[1].z * p.y + m[2].z * p.z + m[3].z
+                if z < height { height = z; name = hull.name }
+            }
+        }
+        return (name, height)
+    }
     public func minimumHeight(_ pose: Pose, cube: CubeState? = nil) -> Double {
         let transforms = robot.transforms(pose.joints, grip: pose.grip)
         var height = Double.infinity
@@ -40,12 +53,7 @@ public struct FloorConstraint: Sendable {
     public func isAllowed(_ pose: Pose, cube: CubeState? = nil) -> Bool {
         guard minimumHeight(pose, cube: cube) >= Self.height else { return false }
         if cubePenetration(pose, cube: cube) > 0.0005 { return false }
-        if let cube, cube.present {
-            let end = robot.endLink(pose.joints, grip: pose.grip)
-            if (cube.attached || Grasp.inJaws(cube: cube, endLink: end)), pose.grip + 1e-6 < Grasp.minimumOpeningMM(cube, endLink: end) {
-                return false
-            }
-        }
+        if padOverlap(pose, cube: cube) > 0.0005 { return false }
         return true
     }
 
@@ -80,20 +88,47 @@ public struct FloorConstraint: Sendable {
         let stopped = stopAtUnattachedCube(from: from, candidate: candidate, cube: cube)
         return clampGripAroundCube(from: from, candidate: stopped, cube: cube)
     }
+    private func cubeAt(_ cube: CubeState, pose: Pose) -> CubeState {
+        guard cube.attached else { return cube }
+        return Grasp.aligned(cube, endLink: robot.endLink(pose.joints, grip: pose.grip))
+    }
+
+    private func padOverlap(_ pose: Pose, cube: CubeState?) -> Double {
+        guard let cube, cube.present else { return 0 }
+        let world = cubeAt(cube, pose: pose)
+        let t = robot.transforms(pose.joints, grip: pose.grip)
+        return Grasp.padPenetration(cube: world, leftFinger: t["finger_left_link"]!, rightFinger: t["finger_right_link"]!)
+    }
+
     private func clampGripAroundCube(from: Pose, candidate: Pose, cube: CubeState?) -> Pose {
         guard let cube, cube.present else { return candidate }
-        let end = robot.endLink(from.joints, grip: from.grip)
-        guard cube.attached || Grasp.inJaws(cube: cube, endLink: end) else { return candidate }
-        let minimum = Grasp.minimumOpeningMM(cube, endLink: end)
-        guard candidate.grip + 1e-9 < minimum else { return candidate }
+        if padOverlap(candidate, cube: cube) <= 0.0005 { return candidate }
+        if candidate.grip >= from.grip { return candidate }
+        if padOverlap(from, cube: cube) > 0.0005 {
+            var pose = candidate
+            pose.grip = from.grip
+            return pose
+        }
+        var closed = candidate.grip, open = from.grip
+        for _ in 0..<32 {
+            let mid = (closed + open) / 2
+            var pose = candidate
+            pose.grip = mid
+            if padOverlap(pose, cube: cube) <= 0.0005 { open = mid } else { closed = mid }
+        }
         var pose = candidate
-        pose.grip = minimum
+        pose.grip = open
         return pose
     }
     private func stopAtUnattachedCube(from: Pose, candidate: Pose, cube: CubeState?) -> Pose {
         guard let cube, cube.present, !cube.attached else { return candidate }
-        if cubePenetration(candidate, cube: cube) <= 0.0005 { return candidate }
-        if cubePenetration(from, cube: cube) > 0.0005 { return from }
+        let penTo = cubePenetration(candidate, cube: cube)
+        if penTo <= 0.0005 { return candidate }
+        let penFrom = cubePenetration(from, cube: cube)
+        if penFrom > 0.0005 {
+            // Sticky contact: do not go deeper, but always allow retract.
+            return penTo <= penFrom + 1e-9 ? candidate : from
+        }
         var low = 0.0, high = 1.0
         for _ in 0..<32 {
             let middle = (low + high) / 2
@@ -140,8 +175,12 @@ public struct FloorConstraint: Sendable {
         // must still be allowed to leave. Treat a legal start as just above the margin
         // so the certifier does not fail-close at t=0.
         var startClearance = minimumHeight(from, cube: cube) - Self.height
+        let endClearance = minimumHeight(to, cube: cube) - Self.height
+        if startClearance < -1e-8 {
+            return endClearance + 1e-9 >= startClearance ? to : from
+        }
         if startClearance >= -1e-8 { startClearance = max(startClearance, Self.margin) }
-        let fraction = walk(0, 1, startClearance, minimumHeight(to, cube: cube) - Self.height, 0)
+        let fraction = walk(0, 1, startClearance, endClearance, 0)
         return fraction == 1 ? to : blend(from, to, fraction)
     }
     private func limitJoint(from: Pose, to: Pose, index: Int) -> Pose {
@@ -165,8 +204,11 @@ public struct FloorConstraint: Sendable {
                 let c = pivot.z + axis.z * parallel - Self.height - Self.margin
                 let radius = hypot(a, b)
                 if radius < 1e-14 || c >= radius { continue }
-                // An initially invalid pose must never advance further into the floor.
-                if a + c < -Self.margin { return from }
+                // Already in the plane: only block motion that goes deeper.
+                if a + c < -Self.margin {
+                    if minimumHeight(to, cube: nil) + 1e-9 >= minimumHeight(from, cube: nil) { continue }
+                    return from
+                }
                 let ratio = clamp(-c / radius, -1, 1)
                 let phase = atan2(b, a), root = acos(ratio)
                 // Only descending roots enter the floor. Ascending roots permit reversal.

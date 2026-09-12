@@ -53,9 +53,27 @@ struct ControlTests {
         for (name, args) in bad { #expect(throws: ControlError.self) { try ControlCatalog.validate(args, for: name) } }
         try ControlCatalog.validate(["joint": 1, "angle_deg": 30.0], for: "rebot_set_joint")
         try ControlCatalog.validate(["grid": true, "camera": "Front"], for: "rebot_set_view")
+        try ControlCatalog.validate(["camera": "Gripper"], for: "rebot_set_view")
+        try ControlCatalog.validate(["camera": "Gripper", "apply": false], for: "rebot_capture_view")
+        for toolName in ["rebot_set_view", "rebot_capture_view"] {
+            let tool = ControlCatalog.tools.first { $0["name"] as? String == toolName }!
+            let camera = ((tool["inputSchema"] as! [String: Any])["properties"] as! [String: Any])["camera"] as! [String: Any]
+            #expect(camera["enum"] as? [String] == ["Orbit", "Front", "Top", "Gripper"])
+        }
+        for name in ["Orbit", "Front", "Top", "Gripper"] {
+            try ControlCatalog.validate(["camera": name], for: "rebot_set_view")
+            try ControlCatalog.validate(["camera": name, "apply": false], for: "rebot_capture_view")
+        }
+        #expect(throws: ControlError.self) { try ControlCatalog.validate(["camera": "Side"], for: "rebot_set_view") }
+        #expect(throws: ControlError.self) { try ControlCatalog.validate(["camera": "top"], for: "rebot_capture_view") }
         try ControlCatalog.validate(["x_mm": 280.0, "y_mm": 0.0, "z_mm": 20.0, "keep_level": true], for: "rebot_move_to_pose")
         try ControlCatalog.validate(["x_mm": 280.0, "y_mm": 0.0, "z_mm": 80.0, "fingers_down": true], for: "rebot_move_to_pose")
+        try ControlCatalog.validate(["x_mm": 245.0, "y_mm": 0.0, "z_mm": 48.0, "fingers_down": true], for: "rebot_servo_tcp")
         try ControlCatalog.validate(["present": true, "size_mm": 40.0], for: "rebot_set_cube")
+        try ControlCatalog.validate(["x_mm": 200.0, "y_mm": -50.0, "size_mm": 10.0], for: "rebot_set_cube")
+        try ControlCatalog.validate(["size_mm": 90.0], for: "rebot_set_cube")
+        #expect(throws: ControlError.self) { try ControlCatalog.validate(["size_mm": 9.0], for: "rebot_set_cube") }
+        #expect(throws: ControlError.self) { try ControlCatalog.validate(["size_mm": 91.0], for: "rebot_set_cube") }
         try ControlCatalog.validate(["mode": "servo"], for: "rebot_set_control_mode")
         #expect(throws: ControlError.self) { try ControlCatalog.validate(["mode": "fly"], for: "rebot_set_control_mode") }
     }

@@ -82,8 +82,16 @@ struct WorkspaceView: View {
                     Text("MOTION LAB").labFont(.system(size: 10, weight: .semibold)).tracking(3).foregroundStyle(.secondary)
                 }.padding(.horizontal, 20).padding(.top, 18)
                 List(WorkspacePage.allCases, selection: Binding(get: { Optional(model.page) }, set: { if let value = $0 { model.page = value } })) { page in
-                    Label(page.rawValue, systemImage: page.icon).labFont(.body).lineLimit(2).tag(page).padding(.vertical, 6)
-                }.listStyle(.sidebar)
+                    Label(page.rawValue, systemImage: page.icon)
+                        .labFont(.body)
+                        .lineLimit(2)
+                        .tag(page)
+                        .padding(.vertical, 6)
+                        .listRowBackground(model.page == page ? Color.white.opacity(0.10) : Color.clear)
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .tint(Color.white.opacity(0.15))
                 VStack(alignment: .leading, spacing: 8) {
                     Label("B601-DM", systemImage: "circle.fill").labFont(.caption.weight(.semibold)).foregroundStyle(Color.labAccent)
                     Text("6 axes + gripper\nNative · Offline").labFont(.caption).foregroundStyle(.secondary).lineSpacing(4)
@@ -100,7 +108,7 @@ struct WorkspaceView: View {
                 }
             }
             .background(Color.labPanel)
-            .navigationTitle(model.page == .simulator ? "B601-DM Simulator" : model.page.rawValue)
+            .navigationTitle(model.page == .simulator ? "B601-DM Simulator - Grok" : model.page.rawValue)
         }
         .toolbar {
             ToolbarItemGroup {

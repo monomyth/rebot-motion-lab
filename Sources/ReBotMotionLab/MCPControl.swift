@@ -30,7 +30,7 @@ import simd
             try server.start { [weak self] request, reply in
                 Task { @MainActor in
                     guard let self else { reply(["ok": false, "error": "Simulator closed"]); return }
-                    do { reply(["ok": true, "data": try self.handle(request)]) }
+                    do { reply(["ok": true, "data": try await self.handle(request)]) }
                     catch {
                         self.record("Rejected: \(error.localizedDescription)")
                         reply(["ok": false, "error": error.localizedDescription])
@@ -66,7 +66,9 @@ import simd
         recentCommands = Array(recentCommands.prefix(12))
     }
     private func showSimulator(_ model: AppModel) {
-        model.page = .simulator
+        if model.page != .simulator {
+            model.page = .simulator
+        }
         if !ProcessInfo.processInfo.arguments.contains("--mcp-integration-test") {
             model.viewport?.window?.deminiaturize(nil)
             model.viewport?.window?.orderFront(nil)
@@ -100,7 +102,7 @@ import simd
         if value == nil || value is NSNull { return nil }
         return (value as? NSNumber)?.doubleValue
     }
-    func handle(_ request: [String: Any]) throws -> [String: Any] {
+    func handle(_ request: [String: Any]) async throws -> [String: Any] {
         guard enabled, let model else { throw ControlError("MCP control is off") }
         guard let name = request["tool"] as? String, let args = request["arguments"] as? [String: Any] else { throw ControlError("Invalid control request") }
         if name == "read_actuators" {
@@ -144,7 +146,7 @@ import simd
         case "rebot_set_cube":
             try setCube(args, model: model)
         case "rebot_capture_view":
-            extra.merge(try capture(args, model: model)) { _, new in new }
+            extra.merge(try await capture(args, model: model)) { _, new in new }
         case "rebot_set_control_mode":
             showSimulator(model)
             if args["mode"] as! String == "servo" { model.enterServo() } else { model.exitServo() }
@@ -245,19 +247,26 @@ import simd
             if center != nil || size != nil || yaw != nil {
                 cube = try cube.placing(center: center, size: size, yaw: yaw)
                 cube.present = true
+            } else if cube.present, !cube.attached {
+                cube.sitOnFloor()
             }
         }
         model.applyCube(cube)
         model.status = cube.present ? (cube.attached ? "Cube attached" : "Cube placed") : "Cube hidden"
     }
-    private func capture(_ args: [String: Any], model: AppModel) throws -> [String: Any] {
-        showSimulator(model)
+    private func capture(_ args: [String: Any], model: AppModel) async throws -> [String: Any] {
+        let apply = args["apply"] as? Bool ?? false
+        // apply:false must not orderFront.
+        if apply {
+            showSimulator(model)
+        } else if model.viewport == nil, model.page != .simulator {
+            model.page = .simulator
+        }
         guard let viewport = model.viewport else { throw ControlError("The 3D scene is not ready to capture.") }
         let width = Int(optionalDouble(args["width"]) ?? 320)
         let height = Int(optionalDouble(args["height"]) ?? 240)
-        let apply = args["apply"] as? Bool ?? false
         let camera = args["camera"] as? String
-        guard let result = viewport.captureJPEG(camera: camera, apply: apply, width: width, height: height) else {
+        guard let result = await viewport.captureJPEG(camera: camera, apply: apply, width: width, height: height) else {
             throw ControlError("The scene camera could not be captured.")
         }
         return [
@@ -275,7 +284,8 @@ import simd
         if args["joints_deg"] != nil { joints = doubles(args["joints_deg"]!) }
         if let value = optionalDouble(args["gripper_mm"]) { grip = value }
         guard args["joints_deg"] != nil || args["gripper_mm"] != nil else { throw ControlError("Provide joints_deg and/or gripper_mm.") }
-        let pose = try boundedPose(joints, grip: grip, name: "servo", model: model)
+        let requested = Pose(name: "servo", joints: joints, grip: grip)
+        let pose = model.floor.limited(from: model.current, to: requested, cube: model.cube)
         showSimulator(model)
         let applied = model.servoTo(pose)
         return ["clamped": applied.joints != joints || applied.grip != grip]
@@ -285,15 +295,30 @@ import simd
         try requireStopped(model)
         let target = SIMD3(args["x_mm"] as! Double, args["y_mm"] as! Double, args["z_mm"] as! Double)
         let keepLevel = args["keep_level"] as? Bool ?? false
+        let fingersDown = args["fingers_down"] as? Bool ?? false
         let solution = model.robot.solve(
             target: target / 1000, initial: model.current.joints,
-            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(model.cube)
+            keepLevel: keepLevel, cubeTopInTool: Grasp.cubeTopInTool(model.cube),
+            fingersDown: fingersDown
         )
-        guard solution.success else { throw ControlError("No IK solution within 2 mm from the current pose. The robot pose was preserved.") }
-        let pose = try boundedPose(solution.joints, grip: model.current.grip, name: "servo tcp", model: model)
+        guard solution.success else {
+            // Do not fall back to unconstrained IK. That pitches ~80° and glues the cube
+            // to a finger. Keep the pose; the caller sees clamped motion.
+            return [
+                "ik_error_mm": solution.error * 1000,
+                "orientation_error_deg": solution.orientationError * 180 / .pi,
+                "clamped": true
+            ]
+        }
+        let requested = Pose(name: "servo tcp", joints: solution.joints, grip: model.current.grip)
+        let pose = model.floor.limited(from: model.current, to: requested, cube: model.cube)
         showSimulator(model)
         _ = model.servoTo(pose)
-        return ["ik_error_mm": solution.error * 1000, "orientation_error_deg": solution.orientationError * 180 / .pi]
+        return [
+            "ik_error_mm": solution.error * 1000,
+            "orientation_error_deg": solution.orientationError * 180 / .pi,
+            "clamped": pose.joints != requested.joints || pose.grip != requested.grip
+        ]
     }
     private func state(_ model: AppModel) -> [String: Any] {
         let tcp = model.tcp
@@ -315,6 +340,7 @@ import simd
             "speed_percent": model.speed, "status": model.status, "page": model.page.rawValue,
             "joint_limits_deg": model.robot.definition.armJoints.enumerated().map { i, joint in ["joint": Double(i + 1), "min": joint.lower / degreesToRadians, "max": joint.upper / degreesToRadians] },
             "gripper_limits_mm": [0, 90],
+            "cube_size_limits_mm": [CubeState.minEdge * 1000, CubeState.maxEdge * 1000],
             "floor": ["enabled": true, "height_mm": FloorConstraint.height * 1000, "minimum_robot_height_mm": model.floor.minimumHeight(model.current) * 1000],
             "presets": robotPresets.map { ["name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip as Any? ?? NSNull()] as [String: Any] },
             "waypoints": model.waypoints.map { ["id": $0.id.uuidString, "name": $0.name, "joints_deg": $0.joints, "gripper_mm": $0.grip] as [String: Any] },

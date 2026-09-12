@@ -14,8 +14,14 @@ public struct CubeState: Equatable, Sendable {
     public var spawnRotation: simd_quatd
     public var verticalVelocity: Double
     public static let gravity = 9.81
+    /// Smallest cube edge. 10 mm is still large enough to pinch.
+    public static let minEdge = 0.01
+    /// Largest cube edge. Matches the fully open gripper (90 mm).
+    public static let maxEdge = 0.09
 
     public static let defaultSize = SIMD3<Double>(repeating: 0.04)
+    /// Native edge of the RealityKit box mesh. Visual scale is `size / meshEdge` on every axis.
+    public static let meshEdge = 0.04
     public static var defaultCenter: SIMD3<Double> {
         SIMD3(0.28, 0, FloorConstraint.height + defaultSize.z / 2)
     }
@@ -43,6 +49,18 @@ public struct CubeState: Equatable, Sendable {
         return m
     }
 
+    public var visualScale: SIMD3<Double> { size / Self.meshEdge }
+
+    /// Pose with uniform visual scale. The unscaled pose matrix is rotation+translation only.
+    public func visualPoseMatrix(_ pose: simd_double4x4) -> simd_double4x4 {
+        let s = visualScale
+        var m = pose
+        m.columns.0 *= s.x
+        m.columns.1 *= s.y
+        m.columns.2 *= s.z
+        return m
+    }
+
     public var corners: [SIMD3<Double>] {
         let h = size / 2
         var points: [SIMD3<Double>] = []
@@ -63,6 +81,12 @@ public struct CubeState: Equatable, Sendable {
     public mutating func restOnFloor() {
         let lift = FloorConstraint.height - minimumHeight
         if lift > 0 { center.z += lift }
+        verticalVelocity = 0
+    }
+
+    /// Snap the bottom face onto the plane, raising or lowering as needed.
+    public mutating func sitOnFloor() {
+        center.z += FloorConstraint.height - minimumHeight
         verticalVelocity = 0
     }
 
@@ -108,15 +132,16 @@ public struct CubeState: Equatable, Sendable {
     public func placing(center: SIMD3<Double>? = nil, size: SIMD3<Double>? = nil, yaw: Double? = nil) throws -> CubeState {
         var next = self
         if let size {
-            guard size.x.isFinite, size.y.isFinite, size.z.isFinite, size.x > 0.005, size.y > 0.005, size.z > 0.005,
-                  size.x <= 0.12, size.y <= 0.12, size.z <= 0.12 else {
-                throw CubeError.invalid("Cube size must be finite and between 5 mm and 120 mm on each side.")
+            guard size.x.isFinite, size.y.isFinite, size.z.isFinite,
+                  size.x >= Self.minEdge, size.y >= Self.minEdge, size.z >= Self.minEdge,
+                  size.x <= Self.maxEdge, size.y <= Self.maxEdge, size.z <= Self.maxEdge else {
+                throw CubeError.invalid("Cube size must be finite, at least 10 mm, and at most 90 mm (fully open gripper) on each side.")
             }
             next.size = size
         }
         if let center {
             guard center.x.isFinite, center.y.isFinite, center.z.isFinite else { throw CubeError.invalid("Cube center must be finite.") }
-            next.center = center
+            next.center = SIMD3(center.x, center.y, next.center.z)
         }
         if let yaw {
             guard yaw.isFinite else { throw CubeError.invalid("Cube yaw must be finite.") }
@@ -124,10 +149,7 @@ public struct CubeState: Equatable, Sendable {
         }
         next.attached = false
         next.attachLocal = matrix_identity_double4x4
-        next.verticalVelocity = 0
-        if next.minimumHeight < FloorConstraint.height - 1e-9 {
-            throw CubeError.invalid("Cube would intersect the solid base plane. No change was applied.")
-        }
+        next.sitOnFloor()
         next.spawnCenter = next.center
         next.spawnSize = next.size
         next.spawnRotation = next.rotation

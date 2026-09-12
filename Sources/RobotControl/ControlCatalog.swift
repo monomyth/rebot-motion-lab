@@ -2,7 +2,7 @@ import Foundation
 import CoreFoundation
 
 public enum ControlCatalog {
-    public static let version = "1.6"
+    public static let version = "1.9"
     private static func number(_ description: String, min: Double? = nil, max: Double? = nil) -> [String: Any] {
         var s: [String: Any] = ["type": "number", "description": description]
         if let min { s["minimum"] = min }; if let max { s["maximum"] = max }; return s
@@ -18,22 +18,23 @@ public enum ControlCatalog {
         tool("rebot_set_joint", "Smoothly move one simulated joint, preserving other angles and gripper. Stop existing motion first.", ["joint": ["type": "integer", "minimum": 1, "maximum": 6], "angle_deg": number("Target angle in degrees; see get_state joint limits.")], required: ["joint", "angle_deg"]),
         tool("rebot_set_gripper", "Smoothly change the simulated gripper opening, preserving the arm pose. Stop existing motion first.", ["opening_mm": number("0 is closed; 90 is open.", min: 0, max: 90)], required: ["opening_mm"]),
         tool("rebot_move_to_position", "Position-only IK in robot base coordinates (mm). Orientation is unconstrained. Unreachable targets leave the pose unchanged. Returns accepted motion; poll get_state until stopped. Disabled in servo mode.", ["x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm.")], required: ["x_mm", "y_mm", "z_mm"]),
-        tool("rebot_move_to_pose", "Cartesian IK with optional keep_level (tool +Z / cube top within 5° of world +Z) or fingers_down (pads hang along world −Z). Position in mm. Unreachable targets leave the pose unchanged. Disabled in servo mode.", [
+        tool("rebot_move_to_pose", "Cartesian IK with optional keep_level (tool +Z / cube top within 5° of world +Z, jaws along ±Y) or fingers_down (fingertips down: tool +X along world −Z). TCP is the fingertip. Position in mm. Unreachable targets leave the pose unchanged. Disabled in servo mode.", [
             "x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm."),
             "roll_deg": number("Optional tool roll in degrees."), "pitch_deg": number("Optional tool pitch in degrees."),
             "yaw_deg": number("Optional tool yaw in degrees."),
             "keep_level": ["type": "boolean", "description": "Keep the tool or attached cube level: tool +Z or cube top along world +Z."],
-            "fingers_down": ["type": "boolean", "description": "Point tool +X along world +Z so the pads hang down. Overrides keep_level."]
+            "fingers_down": ["type": "boolean", "description": "Point the fingertips down (tool +X along world −Z). TCP stays the fingertip; the wrist stays above. Overrides keep_level."]
         ], required: ["x_mm", "y_mm", "z_mm"]),
-        tool("rebot_set_cube", "Place, resize, hide, or drop the kinematic scene cube. Omitted fields stay unchanged. Centers are mm in the robot base frame. Rejects poses through the floor.", [
-            "x_mm": number("Cube center X in mm."), "y_mm": number("Cube center Y in mm."), "z_mm": number("Cube center Z in mm."),
-            "size_mm": number("Cube edge length in mm (5–120).", min: 5, max: 120),
+        tool("rebot_set_cube", "Place or resize the scene cube on the solid base plane. X/Y are mm in the robot base frame; Z is ignored and the cube sits on the plane. Size is 10–90 mm (open gripper). Omitted fields stay unchanged.", [
+            "x_mm": number("Cube center X in mm on the base plane."), "y_mm": number("Cube center Y in mm on the base plane."),
+            "z_mm": number("Ignored. The cube always rests on the base plane."),
+            "size_mm": number("Cube edge length in mm. 10 mm minimum; 90 mm is the fully open gripper.", min: 10, max: 90),
             "yaw_deg": number("Yaw about world Z in degrees."),
             "present": ["type": "boolean", "description": "False hides the cube."],
             "attached": ["type": "boolean", "description": "False forces a drop onto the plane."]
         ]),
-        tool("rebot_capture_view", "JPEG of the RealityKit scene camera (not window chrome). Default 320×240, max 640×480. Optional camera does not steal the user view unless apply is true.", [
-            "camera": ["type": "string", "enum": ["Orbit", "Front", "Top"]],
+        tool("rebot_capture_view", "JPEG of a scene camera. apply=false renders offscreen and does not change the live view.", [
+            "camera": ["type": "string", "enum": ["Orbit", "Front", "Top", "Gripper"]],
             "width": number("Image width in pixels.", min: 64, max: 640),
             "height": number("Image height in pixels.", min: 64, max: 480),
             "apply": ["type": "boolean", "description": "If true, switch the live camera to the captured preset."]
@@ -45,9 +46,10 @@ public enum ControlCatalog {
             "joints_deg": ["type": "array", "items": ["type": "number"], "minItems": 6, "maxItems": 6],
             "gripper_mm": number("Optional gripper opening.", min: 0, max: 90)
         ]),
-        tool("rebot_servo_tcp", "Immediate IK from the current pose. Requires servo mode. keep_level matches rebot_move_to_pose.", [
+        tool("rebot_servo_tcp", "Immediate IK from the current pose. Requires servo mode. keep_level and fingers_down match rebot_move_to_pose.", [
             "x_mm": number("Base X in mm."), "y_mm": number("Base Y in mm."), "z_mm": number("Base Z in mm."),
-            "keep_level": ["type": "boolean", "description": "Keep the tool or attached cube level."]
+            "keep_level": ["type": "boolean", "description": "Keep the tool or attached cube level."],
+            "fingers_down": ["type": "boolean", "description": "Point the fingertips down (tool +X along world −Z). TCP stays the fingertip; the wrist stays above. Overrides keep_level."]
         ], required: ["x_mm", "y_mm", "z_mm"]),
         tool("rebot_apply_preset", "Smoothly move to a preset. Folded also closes the gripper; other presets preserve opening.", ["name": ["type": "string", "enum": ["Folded", "Ready", "Reach", "Upright"]]], required: ["name"]),
         tool("rebot_playback", "Control simulator playback. play starts the sequence; resume continues paused motion. stop holds the current pose. reset immediately returns to folded startup and clears the trace, preserving the sequence.", ["action": ["type": "string", "enum": ["play", "pause", "resume", "stop", "reset"]]], required: ["action"]),
@@ -55,7 +57,7 @@ public enum ControlCatalog {
         tool("rebot_add_waypoint", "Append the current stopped pose to the sequence.", ["name": ["type": "string", "minLength": 1, "maxLength": 120]]),
         tool("rebot_set_sequence", "Replace the simulator sequence after validating every pose. Does not start playback. Export from the app to save permanently.", ["poses": ["type": "array", "minItems": 1, "maxItems": 1000, "items": ["type": "object", "properties": ["name": ["type": "string", "minLength": 1, "maxLength": 120], "joints_deg": ["type": "array", "items": ["type": "number"], "minItems": 6, "maxItems": 6], "gripper_mm": number("Opening in mm.", min: 0, max: 90)], "required": ["name", "joints_deg", "gripper_mm"], "additionalProperties": false]]], required: ["poses"], destructive: true),
         tool("rebot_clear_sequence", "Clear all simulator waypoints. Does not change the pose. Stop playback first.", destructive: true),
-        tool("rebot_set_view", "Show the simulator and set its camera or overlays. Omitted settings stay unchanged.", ["camera": ["type": "string", "enum": ["Orbit", "Front", "Top"]], "grid": ["type": "boolean"], "tool_axes": ["type": "boolean"], "trace": ["type": "boolean"], "clear_trace": ["type": "boolean"]])
+        tool("rebot_set_view", "Show the simulator and set its camera or overlays. Omitted settings stay unchanged.", ["camera": ["type": "string", "enum": ["Orbit", "Front", "Top", "Gripper"]], "grid": ["type": "boolean"], "tool_axes": ["type": "boolean"], "trace": ["type": "boolean"], "clear_trace": ["type": "boolean"]])
     ]
     public static let resources: [[String: Any]] = [
         ["uri": "rebot://state", "name": "Live simulator state", "mimeType": "application/json"],
