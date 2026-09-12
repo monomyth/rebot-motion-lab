@@ -87,7 +87,7 @@ The MCP client launches ReBotMCP as a subprocess. Its stdout contains only newli
 
 The helper talks to the GUI through a Unix domain socket in a private per-user temporary directory. The directory is mode 0700, the socket mode 0600, both ends verify the peer's user ID, and an instance lock prevents two apps from taking over the same socket. There is no HTTP listener or external network endpoint. IPC messages are bounded to 1 MiB and have I/O timeouts. If a connection fails after a command was sent, the helper does not retry it automatically; read state before retrying.
 
-The original tools operate the kinematic arm. Optional cube experiments add native contact physics as documented above. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips. Targets below the floor are rejected; an obstructed path stops at contact. Read `status` and actual pose to distinguish contact from reaching the requested target. State includes the floor height and minimum moving-mesh height.
+The original tools operate the kinematic arm. Optional cube experiments add native contact physics as documented above. The app has no robot hardware connection, CAN transport, self-collision detection, or actuator dynamics model. It enforces a solid base plane for the complete moving geometry, including both gripper fingertips. Kinematic pose tools reject targets below the floor. External controller actions are instead accepted with their targets limited at the first floor contact; the episode and controller lease remain active, and a later upward action can raise the arm. The action result reports `floor_limited`, `target_joints_deg`, and `target_gripper_mm`. Read `status` and actual pose to distinguish contact from reaching the requested target. State includes the floor height and minimum moving-mesh height.
 
 ## Developer checks
 
@@ -98,3 +98,33 @@ python3 scripts/test-mcp.py "dist/ReBot Motion Lab Codex.app" /absolute/test-out
 ```
 
 The integration script launches its own app instance and stdio server with an isolated control directory, verifies all 12 tools and both resources, and terminates only its own processes. `REBOT_CONTROL_DIRECTORY` overrides the private IPC directory for these tests; normal clients do not need it. The directory must belong to the current user, have no group/other access, and fit macOS's Unix socket path length limit.
+
+### Brain activity display diagnostics
+
+`rebot_get_state` now includes `brain_activity` with display status, mapped/total neuron counts, received frame count, current observation frame/episode, activation range, and `interactive: false`. This is a display-only diagnostic. The overlay receives optional local telemetry from the fly-brain Python runner; it adds no controller actions or ownership permissions. The fixed 3D view is at the top-right of the simulator viewport.
+
+### Version 1.8 contact changes
+
+Fingertip collision shapes are split into adjacent convex sections clipped from the existing triangles. Their outer geometry stays within the original mesh hull; no gripping pads or cube attachments are added. The closing stop uses measured inner pad surfaces and 0.02 mm total contact preload. This stabilizes small-cube contact while retaining a dynamic cube, gravity, contact/friction holding, and geometric floor enforcement. Controller floor-limited targets are recoverable and reported in the action response.
+
+## Camera rig: Front + Gripper
+
+`rebot_set_view(camera: ...)` accepts `Orbit`, `Front`, `Top`, and `Gripper`.
+Front faces the robot from the +X side at 45 degrees downward. Gripper follows
+the mounted Gemini 305 RGB viewpoint at the reference assembly's 15 degrees relative to the tool.
+Front, Top, and Gripper are fixed camera presets; Orbit supports pan/rotate/zoom.
+
+Image observations use the synchronized Front/Gripper pair, with rig revision
+`front336l-gripper305-rgb-v4`. Each image includes intrinsics and its current
+`world_from_camera`; Gripper extrinsics change with wrist motion. The model
+uses one simulated left RGB channel, not stereo depth. Old Front/Top policies
+need new observations and retraining before use with this camera rig.
+
+RGB optics: Front simulates Gemini 336L, Gripper simulates Gemini 305. Both use
+nominal H94 x V68 degrees, 16:10 RGB (320 x 200 for recording). The pinhole
+projection's actual horizontal FOV is 94.3636 degrees and is reported in camera
+calibration. Sensor views retain 16:10 framing when the window is resized.
+
+## Published fly-brain controller
+
+Use [fly-brain-codex](https://github.com/monomyth/fly-brain-codex) for setup and the pinned [Hugging Face model release](https://huggingface.co/monomyth/fly-brain-codex) for assets. The matching simulator branch is `fly-brain-codex`; use `[mcp_servers.rebot-motion-lab-codex]` for this experimental instance. Models are downloaded into the separate controller project, not this simulator repository.

@@ -65,6 +65,45 @@ struct FloorConstraintTests {
             #expect(floor.minimumHeight(Motion.interpolate(from: from, to: stopped, fraction: Double(i)/100)) >= FloorConstraint.height)
         }
     }
+    @Test func coordinatedMotionCanRaiseFromExactFloorContact() throws {
+        let (_, floor) = try setup()
+        var contact = pose(homePose, 90); contact.joints[5] = 90
+        var safe = contact.joints[1], unsafe = -179.0
+        for _ in 0..<60 {
+            let middle = (safe + unsafe) / 2
+            contact.joints[1] = middle
+            if floor.isAllowed(contact) { safe = middle } else { unsafe = middle }
+        }
+        contact.joints[1] = safe
+        #expect(floor.minimumHeight(contact) >= FloorConstraint.height)
+        #expect(floor.minimumHeight(contact) - FloorConstraint.height < 1e-10)
+        var up = contact; up.joints[0] += 2; up.joints[1] += 2; up.grip -= 1
+        let escaped = floor.limited(from: contact, to: up)
+        #expect(escaped == up)
+        for i in 0...100 {
+            #expect(floor.minimumHeight(Motion.interpolate(from: contact, to: escaped, fraction: Double(i)/100)) >= FloorConstraint.height)
+        }
+        var down = contact; down.joints[0] += 2; down.joints[1] -= 2
+        let blocked = floor.limited(from: contact, to: down)
+        #expect(abs(blocked.joints[1] - contact.joints[1]) < 1e-6)
+        #expect(floor.minimumHeight(blocked) >= FloorConstraint.height)
+    }
+    @Test func jointFloorContactDoesNotFreezeSafeJawClosure() throws {
+        let (_, floor) = try setup()
+        var ready = pose(homePose, 90); ready.joints[5] = 90
+        var below = ready; below.joints[1] = -179
+        let contact = floor.limited(from: ready, to: below)
+        var request = contact; request.joints[1] = -179; request.grip = 0
+        let coupled = floor.limited(from: contact, to: request)
+        let accepted = floor.limitedWithIndependentGrip(from: contact, to: request)
+        #expect(accepted.joints == coupled.joints)
+        #expect(accepted.joints[1] > request.joints[1])
+        #expect(coupled.grip > accepted.grip)
+        #expect(accepted.grip == 0)
+        for i in 0...100 {
+            #expect(floor.isAllowed(Motion.interpolate(from: contact, to: accepted, fraction: Double(i)/100)))
+        }
+    }
     private func originalMeshMinimum(_ robot: Kinematics, _ pose: Pose) throws -> (height: Double, link: String) {
         let transforms = robot.transforms(pose.joints, grip: pose.grip)
         var lowest = Double.infinity, name = ""

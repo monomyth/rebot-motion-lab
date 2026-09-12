@@ -1,5 +1,18 @@
 # ReBot Motion Lab Codex
 
+## Fly Brain Codex branch
+
+This branch adds the native cube experiment, synchronized Front/Gripper camera observations, floor-contact recovery, an activity overlay and the **Run fly brain** UI. The window title is **B601-DM Simulator - Codex**.
+
+Controller source and setup: [monomyth/fly-brain-codex](https://github.com/monomyth/fly-brain-codex). Model binaries and derived connectome assets: [Hugging Face / monomyth/fly-brain-codex](https://huggingface.co/monomyth/fly-brain-codex). No model weights are bundled in this repository.
+
+Clone the controller to `~/code/codex/fly-brain`, install its Apple Silicon UI dependencies, and run its `scripts/download_model.py` installer. Clone this branch to `~/github/rebot-motion-lab-codex`, then build with `bash scripts/build-app.sh ./dist`. Open `dist/ReBot Motion Lab Codex.app`, choose **Set up cube**, and press **Run fly brain** with learning off.
+
+Start folded with a **20 mm** cube near **X350, Y0 mm**. The retained model has only narrow-workspace validation; moving the cube farther sideways can fail. Native cube placement and 10–90 mm sizing do not imply learned pickup competence throughout that range. After a qualifying five-second hold, an explicit completion routine opens the gripper and verifies the drop. See the controller repository for model-specific results and limitations.
+
+The rendered cameras approximate nominal Orbbec RGB optics; this is not a depth-sensor or physical-robot simulation. Their fixed calibrated Front/Gripper observations are independent of the selected spectator view. Native MCP documentation is in [MCP.md](MCP.md).
+
+
 **This feature branch adds a native cube pickup environment for external MaleCNS controllers. See [the experiment guide](docs/FLY_EXPERIMENT.md) for setup, physics, cameras, control sessions, recording, and verification. The neural model and its training remain external.**
 
 **Explore the ReBot B601-DM in a native macOS app or your browser, with MCP control for the native simulator.**

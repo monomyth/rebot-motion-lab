@@ -60,7 +60,7 @@ extension Kinematics {
         for _ in 0..<max(0, iterations) {
             let m = toolTransform(q, frame: frame), p = SIMD3(m[3].x, m[3].y, m[3].z), r = simd_quatd(m)
             let e = position - p, a = rotationError(orientation, r)
-            if simd_length(e) < 0.0005 && simd_length(a) < 0.003 { break }
+            if simd_length(e) < 0.000025 && simd_length(a) < 0.0002 { break }
             let error = [e.x, e.y, e.z, a.x * angularScale, a.y * angularScale, a.z * angularScale]
             let columns = (0..<6).map { i -> [Double] in
                 let h = q[i] + 0.01 <= definition.armJoints[i].upper / degreesToRadians ? 0.01 : -0.01

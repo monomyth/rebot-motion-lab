@@ -7,6 +7,8 @@ import simd
 
 @MainActor final class ExperimentCoordinator: ObservableObject {
     private unowned let model: AppModel
+    lazy var flyBrain = FlyBrainRunner(coordinator:self)
+    lazy var brainActivity = BrainActivityStore(coordinator:self)
     @Published private(set) var enabled=false
     @Published private(set) var placingCube=false
     @Published private(set) var placementMessage: String?
@@ -25,6 +27,7 @@ import simd
     private(set) var elapsed=0.0
     private(set) var lastError: String?
     private var target: Pose?
+    private var controllerActivity: NSObjectProtocol?
     private var lastPhysicsTime=0.0
     private var lastReadout=0.0
     private var lastRecord=0.0
@@ -56,7 +59,8 @@ import simd
             do {
                 let next=try await ManipulationScene(viewport:viewport,robot:model.robot,task:configuration)
                 guard !Task.isCancelled else { next.remove(); return }
-                let views = try ["Front","Top"].map { try ObservationCamera(name:$0,source:viewport) }
+                // Observation rigs are independent of the physics task; reuse their attached ARViews.
+                let views = cameras.isEmpty ? try ObservationRig.observationNames.map { try ObservationCamera(name:$0,source:viewport) } : cameras
                 scene?.remove(); scene=next; self.configuration=configuration; task=configuration; cameras=views; enabled=true; phase="configured"
                 model.page = .simulator
                 try reset()
@@ -75,8 +79,9 @@ import simd
     }
     private func beginEpisode(trial:ExperimentTask, pose:Pose, scene:ManipulationScene, encodedTask:[String:Any]) {
         cancelFloorPlacement()
+        flyBrain.stop()
         task=trial
-        lease.release(); target=nil
+        endControllerActivity(); lease.release(); target=nil
         model.setExternalControlLock(false)
         model.stopPlaybackOnly()
         model.applyExperimentPose(pose, immediately:true)
@@ -87,8 +92,27 @@ import simd
         recorder.append(["type":"reset","episode_id":episodeID,"task":encodedTask])
         updateCameras(); displayRevision += 1
     }
+    var canRunFlyBrain: Bool { canEditCube && phase == "ready" }
+    func flyBrainStateChanged() { displayRevision += 1 }
+    func finishVisualResponse() {
+        if !hasOwner && phase == "running" { phase="stopped" }
+        displayRevision += 1
+    }
+    func prepareFlyBrainRun(inputMode:String) throws {
+        guard canRunFlyBrain, ["state","vision"].contains(inputMode) else {
+            throw ExperimentError.invalid("Set up or apply the cube, then wait for Ready before running the fly brain.")
+        }
+        if !model.mcpControl.enabled { model.mcpControl.setEnabled(true,persist:false) }
+        guard model.mcpControl.enabled else { throw ExperimentError.invalid(model.mcpControl.status) }
+        // Observation access changes explicitly; cube, robot pose and episode stay intact.
+        task.inputMode=inputMode; configuration.inputMode=inputMode
+        displayRevision += 1
+    }
+    func stopFlyBrainAndArm() {
+        stopArm(reason:"user_takeover"); model.stopPlaybackOnly()
+    }
     var canEditCube: Bool {
-        enabled && !hasOwner && !model.hasMotion && !recording && !captureBusy && !["configuring","settling"].contains(phase)
+        enabled && !flyBrain.isRunning && !hasOwner && !model.hasMotion && !recording && !captureBusy && !["configuring","settling"].contains(phase)
     }
     func placeCube(xMM:Double, yMM:Double, sizeMM:Double? = nil, yawDeg:Double? = nil) throws {
         guard canEditCube, let scene else { throw ExperimentError.invalid("Set up a cube, then stop motion, external control, and recording before editing it. Wait for any image capture to finish.") }
@@ -124,6 +148,7 @@ import simd
         if recording { _ = try recorder.stop(); recording=false }
     }
     func stopArm(reason: String) {
+        if reason != "manual_takeover" { flyBrain.stop() }
         cancelFloorPlacement()
         if phase == "configuring" {
             setupTask?.cancel(); setupTask=nil; model.setExternalControlLock(false)
@@ -131,10 +156,14 @@ import simd
             return
         }
         guard enabled else { return }
-        target=nil; lease.release()
+        target=nil; endControllerActivity(); lease.release()
         model.setExternalControlLock(false)
         recorder.append(["type":"stop_arm","reason":reason,"episode_id":episodeID,"frame_id":frameID,"time":elapsed])
         displayRevision += 1
+    }
+    private func endControllerActivity() {
+        if let controllerActivity { ProcessInfo.processInfo.endActivity(controllerActivity) }
+        controllerActivity=nil
     }
     func pause() {
         guard enabled, phase != "paused", phase != "configuring" else { return }
@@ -151,14 +180,12 @@ import simd
         frameID += 1
         if let target, hasOwner, ["running","completed"].contains(phase) {
             let seconds=min(dt,1.0/30)
-            let delta=zip(model.current.joints,target.joints).map { $1-$0 }
-            let maximum=delta.map(abs).max() ?? 0
-            let fraction=maximum > 0 ? min(1,30*seconds/maximum) : 1
-            let joints=zip(model.current.joints,delta).map { $0+$1*fraction }
+            let joints=ExternalJointDrive.advance(current:model.current.joints,target:target.joints,seconds:seconds)
             let grip=model.current.grip+clamp(target.grip-model.current.grip,-25*seconds,25*seconds)
             let proposed=Pose(name:"Controller",joints:joints,grip:grip)
-            let bounded=model.floor.limited(from:model.current,to:proposed)
-            model.applyExperimentPose(scene.limitGrip(bounded))
+            let bounded=model.floor.limitedWithIndependentGrip(from:model.current,to:proposed)
+            let contactLimited = scene.limitGrip(bounded,continuous:true)
+            model.applyExperimentPose(model.floor.limitedWithIndependentGrip(from:model.current,to:contactLimited))
         }
         scene.syncRobot(model.current,dt:min(dt,0.05))
         if let previous=lastPose {
@@ -208,6 +235,7 @@ import simd
         for camera in cameras { camera.update(pose:model.current,definition:model.robot.definition,cube:scene.cube) }
     }
     func observation() -> [String:Any] {
+        if !captureBusy { updateCameras() }
         var result:[String:Any] = ["episode_id":episodeID,"frame_id":frameID,"simulation_time":scene?.time ?? 0,
             "task_time":elapsed,"phase":phase,"input_mode":task.inputMode,"world_frame":"robot_base_Z_up",
             "goal":["clearance_mm":task.liftClearanceMM,"tilt_tolerance_deg":task.tiltToleranceDeg,"hold_seconds":task.holdSeconds],
@@ -216,7 +244,8 @@ import simd
             "gripper_velocity_mm_s":gripVelocity,"tool_pose":(try? jsonObject(CartesianPose(model.robot.toolTransform(model.current.joints)))) ?? [:],
             "grasp_pose":(try? jsonObject(CartesianPose(model.robot.toolTransform(model.current.joints,frame:"grasp")))) ?? [:],
             "finger_contacts":["left":scene?.contacts.contains("finger_left_link") ?? false,"right":scene?.contacts.contains("finger_right_link") ?? false],
-            "owner":owner,"last_action_id":lease.lastActionID,"camera_calibration":cameras.map(\.calibration)]
+            "owner":owner,"last_action_id":lease.lastActionID,"camera_rig_revision":ObservationRig.revision,
+            "observation_camera_names":ObservationRig.observationNames,"camera_calibration":cameras.map(\.calibration)]
         if task.inputMode == "state", let scene { result["cube_pose"]=try? jsonObject(scene.cubePose) }
         return result
     }
@@ -238,8 +267,8 @@ import simd
         guard enabled, !captureBusy, !["settling","configuring","invalid","physics_error"].contains(phase), let scene else { throw ExperimentError.invalid("Observation not ready or capture already in progress.") }
         captureBusy=true; defer { captureBusy=false }
         let capturedEpisode=episodeID, start=ProcessInfo.processInfo.systemUptime
-        var result=observation()
         for camera in cameras { camera.update(pose:model.current,definition:model.robot.definition,cube:scene.cube) }
+        var result=observation()
         // All render copies now contain the same frozen pose. Physics can continue independently.
         var frames=[[String:Any]]()
         for camera in cameras { frames.append(try await camera.capture()) }
@@ -259,7 +288,7 @@ import simd
         case "rebot_place_cube":
             try placeCube(xMM:args["x_mm"] as! Double,yMM:args["y_mm"] as! Double,sizeMM:args["size_mm"] as? Double,yawDeg:args["yaw_deg"] as? Double)
             return ["accepted":true,"task":try jsonObject(task),"state":evaluation()]
-        case "rebot_get_task": return ["task":try jsonObject(task),"configuration":try jsonObject(configuration),"capabilities":["backend":"RealityKit","fixed_step":false,"rgb":true,"depth":false,"segmentation":false,"hardware":false,"external_control":true,"cube_placement":true,"cube_size_range_mm":[CubePlacement.minimumSideMM,CubePlacement.maximumSideMM],"floor_xy_range_mm":[-CubePlacement.floorHalfExtentMM,CubePlacement.floorHalfExtentMM]],"state":evaluation()]
+        case "rebot_get_task": return ["task":try jsonObject(task),"configuration":try jsonObject(configuration),"capabilities":["camera_rig_revision":ObservationRig.revision,"observation_camera_names":ObservationRig.observationNames,"view_names":ObservationRig.viewNames,"backend":"RealityKit","fixed_step":false,"rgb":true,"depth":false,"segmentation":false,"hardware":false,"external_control":true,"cube_placement":true,"cube_size_range_mm":[CubePlacement.minimumSideMM,CubePlacement.maximumSideMM],"floor_xy_range_mm":[-CubePlacement.floorHalfExtentMM,CubePlacement.floorHalfExtentMM]],"state":evaluation()]
         case "rebot_reset_episode": try reset(seed:(args["seed"] as? NSNumber)?.uint64Value); return evaluation()
         case "rebot_get_observation":
             guard enabled, !["settling","configuring","invalid","physics_error"].contains(phase) else { throw ExperimentError.invalid("Wait for episode configuration/reset/settling.") }
@@ -285,6 +314,9 @@ import simd
             guard enabled, phase == "running", !model.hasMotion else { throw ExperimentError.invalid("Start an episode and stop other motion before connecting.") }
             cancelFloorPlacement()
             let token=try lease.acquire(episode:episodeID,provenance:args["provenance"] as! String,modelID:args["model_id"] as! String,now:ProcessInfo.processInfo.systemUptime)
+            // Keep an actively controlled simulation responsive when Codex is foreground.
+            // This ends with the controller lease and does not change system preferences.
+            controllerActivity=ProcessInfo.processInfo.beginActivity(options:[.userInitiatedAllowingIdleSystemSleep,.latencyCritical],reason:"ReBot simulation controller")
             target=model.current
             model.setExternalControlLock(true)
             recorder.append(["type":"controller_connected","episode_id":episodeID,"provenance":lease.provenance,"model_id":lease.modelID])
@@ -296,13 +328,16 @@ import simd
             guard q == model.robot.clampPose(q) else { throw ExperimentError.invalid("Joint target is outside limits.") }
             // Validate everything before consuming the monotonically increasing action ID.
             let requested=Pose(name:"external",joints:q,grip:grip)
-            guard model.floor.isAllowed(requested) else { throw ExperimentError.invalid("Requested endpoint intersects the floor.") }
+            // Floor contact limits the motion, not the controller's lifetime.
+            // A subsequent upward command can depart from this contact pose.
+            let allowed = model.floor.limitedWithIndependentGrip(from:model.current,to:requested)
+            let floorLimited = allowed.joints != requested.joints || allowed.grip != requested.grip
             try lease.validate(token:args["token"] as! String,episode:args["episode_id"] as! String,actionID:args["action_id"] as! Int,
                                observedFrame:args["observed_frame_id"] as! Int,currentFrame:frameID,now:ProcessInfo.processInfo.systemUptime)
-            target=requested; actionCount += 1
+            target=allowed; actionCount += 1
             recorder.append(["type":"action","episode_id":episodeID,"frame_id":frameID,"simulation_time":scene?.time ?? 0,
-                             "action_id":lease.lastActionID,"requested_joints_deg":q,"requested_gripper_mm":grip,"executed":observation(),"provenance":owner,"model_id":lease.modelID])
-            return ["accepted":true,"completed":false,"observation":observation()]
+                             "action_id":lease.lastActionID,"requested_joints_deg":q,"requested_gripper_mm":grip,"floor_limited":floorLimited,"target_joints_deg":allowed.joints,"target_gripper_mm":allowed.grip,"executed":observation(),"provenance":owner,"model_id":lease.modelID])
+            return ["accepted":true,"completed":false,"floor_limited":floorLimited,"target_joints_deg":allowed.joints,"target_gripper_mm":allowed.grip,"observation":observation()]
         case "rebot_solve_pose", "rebot_move_to_pose":
             let pose=try decodePose(args["pose"] as! [String:Any])
             let solution=try model.robot.solvePose(target:pose,initial:model.current.joints,frame:args["frame"] as? String ?? "grasp")
@@ -318,6 +353,7 @@ import simd
             if args["action"] as? String == "start" {
                 guard enabled else { throw ExperimentError.invalid("Configure experiment before recording.") }
                 let path=try recorder.start(manifest:["schema":"rebot-experiment-v1","task":try jsonObject(task),"episode_id":episodeID,
+                    "camera_rig_revision":ObservationRig.revision,"observation_camera_names":ObservationRig.observationNames,
                     "simulator_version":ControlCatalog.version,"created_at":ISO8601DateFormatter().string(from:Date()),"cameras":cameras.map(\.calibration),
                     "backend":"RealityKit","determinism":"seeded setup, real-time physics; not bitwise deterministic","input_mode":task.inputMode,
                     "grasp_mode":"contact_friction","grasp_offset_tool_mm":[-20,0,0],"policy_reward_input":false,

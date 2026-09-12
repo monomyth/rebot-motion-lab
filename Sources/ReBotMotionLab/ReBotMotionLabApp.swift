@@ -12,7 +12,7 @@ import RobotCore
         Window("ReBot Motion Lab", id: "main") {
             Group {
                 switch result {
-                case .success(let model): WorkspaceView(model: model)
+                case .success(let model): WorkspaceView(model: model).onAppear { delegate.model = model }
                 case .failure(let error): ContentUnavailableView("Resources could not load", systemImage: "exclamationmark.triangle", description: Text(error.localizedDescription))
                 }
             }
@@ -23,7 +23,7 @@ import RobotCore
         .defaultSize(width: 1380, height: 900)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Import Trajectory…") { model?.importTrajectory() }.keyboardShortcut("o")
+                Button("Import Task or Trajectory…") { model?.importTrajectory() }.keyboardShortcut("o")
                 Button("Export Trajectory…") { model?.exportTrajectory() }.keyboardShortcut("s")
                 Divider()
                 Button("Save Actuator Reference…") { model?.saveReference() }
@@ -45,6 +45,8 @@ import RobotCore
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var model: AppModel?
+    func applicationWillTerminate(_ notification: Notification) { model?.experiment.stopFlyBrainAndArm() }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         let arguments = ProcessInfo.processInfo.arguments
@@ -59,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension Color {
     static let labAccent = Color(red: 0.76, green: 0.91, blue: 0.35)
+    static let labSelection = Color(red:0.32,green:0.33,blue:0.33)
     static let labPanel = Color(red: 0.10, green: 0.12, blue: 0.11)
 }
 extension NSColor {
@@ -81,9 +84,24 @@ struct WorkspaceView: View {
                     Text("ReBot").labFont(.system(size: 29, weight: .semibold, design: .rounded))
                     Text("MOTION LAB").labFont(.system(size: 10, weight: .semibold)).tracking(3).foregroundStyle(.secondary)
                 }.padding(.horizontal, 20).padding(.top, 18)
-                List(WorkspacePage.allCases, selection: Binding(get: { Optional(model.page) }, set: { if let value = $0 { model.page = value } })) { page in
-                    Label(page.rawValue, systemImage: page.icon).labFont(.body).lineLimit(2).tag(page).padding(.vertical, 6)
-                }.listStyle(.sidebar)
+                ScrollView {
+                    VStack(spacing: 3) {
+                        ForEach(WorkspacePage.allCases) { page in
+                            Button { model.page = page } label: {
+                                Label(page.rawValue, systemImage: page.icon)
+                                    .labFont(.body).lineLimit(2)
+                                    .frame(maxWidth:.infinity,alignment:.leading)
+                                    .padding(.horizontal,10).padding(.vertical,11)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                            .background(model.page == page ? Color.labSelection : .clear,
+                                        in:RoundedRectangle(cornerRadius:6))
+                            .accessibilityAddTraits(model.page == page ? [.isSelected] : [])
+                        }
+                    }.padding(.horizontal,10)
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     Label("B601-DM", systemImage: "circle.fill").labFont(.caption.weight(.semibold)).foregroundStyle(Color.labAccent)
                     Text("6 axes + gripper\nNative · Offline").labFont(.caption).foregroundStyle(.secondary).lineSpacing(4)
@@ -100,11 +118,11 @@ struct WorkspaceView: View {
                 }
             }
             .background(Color.labPanel)
-            .navigationTitle(model.page == .simulator ? "B601-DM Simulator" : model.page.rawValue)
+            .navigationTitle(model.page == .simulator ? "B601-DM Simulator - Codex" : model.page.rawValue)
         }
         .toolbar {
             ToolbarItemGroup {
-                Button { model.importTrajectory() } label: { Label("Import trajectory", systemImage: "square.and.arrow.down") }.help("Import a trajectory JSON file")
+                Button { model.importTrajectory() } label: { Label("Import task or trajectory", systemImage: "square.and.arrow.down") }.help("Import a cube task or trajectory JSON file")
                 Button { model.exportTrajectory() } label: { Label("Export trajectory", systemImage: "square.and.arrow.up") }.help("Export the waypoint sequence")
             }
         }

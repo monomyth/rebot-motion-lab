@@ -46,6 +46,7 @@ struct RobotScene: NSViewRepresentable {
     private(set) var indexedVertexCount = 0
     private var previousTrace = false
     private var lastTracePoint: SIMD3<Float>?
+    private var selectedCamera = "Orbit"
     private var cameraRevision = -1, traceRevision = -1
     private var azimuth: Float = -0.9887, elevation: Float = 0.38, distance: Float = 2.04
     private var target: SIMD3<Float> = [0.06, 0, 0.30]
@@ -116,6 +117,22 @@ struct RobotScene: NSViewRepresentable {
         }
         axesEntity.name = "tool_axes"
         linkEntities["end_link"]!.addChild(axesEntity)
+        // Render-only virtual camera housing. It has no collider, mass, or effect on joint control.
+        let mount = Entity(); mount.name = "gripper_camera_housing"
+        // Meshes from the supplied FCStd assembly, already expressed in end_link meters.
+        for (file,color) in [("gemini305-cradle.stl",NSColor(red:0.84,green:0.46,blue:0.10,alpha:1)),
+                             ("gemini305-housing.stl",NSColor(red:0.20,green:0.25,blue:0.29,alpha:1))] {
+            let stl=try STLMesh(data:Data(contentsOf:Assets.url("model/camera/"+file)))
+            let indexed=stl.indexed()
+            var descriptor=MeshDescriptor(name:file)
+            descriptor.positions=MeshBuffer(indexed.positions)
+            descriptor.normals=MeshBuffer(indexed.normals)
+            descriptor.primitives = .triangles(indexed.indices)
+            let mesh=try MeshResource.generate(from:[descriptor])
+            let part=ModelEntity(mesh:mesh,materials:[SimpleMaterial(color:color,roughness:0.62,isMetallic:false)])
+            mount.addChild(part)
+        }
+        linkEntities["end_link"]!.addChild(mount)
         updateCamera()
     }
     func line(from a: SIMD3<Float>, to b: SIMD3<Float>, width: Float, material: UnlitMaterial) -> ModelEntity {
@@ -149,6 +166,7 @@ struct RobotScene: NSViewRepresentable {
             fingerMotion["finger_right"]?.position.y = -Float(pose.grip / 2000)
         }
         previousPose = pose
+        if selectedCamera == "Gripper" { updateCamera() }
         if owner?.showTrace == true { appendTrace(SIMD3<Float>(robot!.position(pose.joints))) }
     }
     private func appendTrace(_ p: SIMD3<Float>) {
@@ -175,16 +193,20 @@ struct RobotScene: NSViewRepresentable {
         previousTrace = state.showTrace
         if state.showTrace, lastTracePoint == nil { appendTrace(SIMD3<Float>(robot!.position(state.current.joints))) }
         if cameraRevision != state.cameraRevision {
-            cameraRevision = state.cameraRevision; target = [0.06, 0, 0.30]
-            switch state.camera {
-            case "Front": azimuth = -.pi / 2; elevation = 0.065; distance = 1.85
-            case "Top": azimuth = -.pi / 2; elevation = .pi / 2 - 0.001; distance = 1.65
-            default: azimuth = -0.9887; elevation = 0.38; distance = 2.04
-            }
+            cameraRevision = state.cameraRevision; selectedCamera = state.camera
+            target = [0.06, 0, 0.30]
+            azimuth = -0.9887; elevation = 0.38; distance = 2.04
             updateCamera()
         }
     }
     func updateCamera() {
+        cameraEntity.camera.fieldOfViewInDegrees = Float(ObservationRig.fieldOfView(selectedCamera))
+        linkEntities["end_link"]?.findEntity(named:"gripper_camera_housing")?.isEnabled = selectedCamera != "Gripper"
+        if selectedCamera != "Orbit" {
+            let tool = linkEntities["end_link"]!.transformMatrix(relativeTo:world)
+            cameraEntity.transform = Transform(matrix:floatMatrix(ObservationRig.worldFromCamera(selectedCamera,worldFromTool:doubleMatrix(tool))))
+            return
+        }
         let offset = SIMD3<Float>(cos(azimuth) * cos(elevation), sin(azimuth) * cos(elevation), sin(elevation)) * distance
         cameraEntity.look(at: target, from: target + offset, upVector: [0, 0, 1], relativeTo: nil)
     }
@@ -205,7 +227,7 @@ struct RobotScene: NSViewRepresentable {
     }
     override func mouseUp(with event:NSEvent) { floorPlacementGesture=false }
     override func mouseDragged(with event: NSEvent) {
-        guard !floorPlacementGesture else { return }
+        guard !floorPlacementGesture, selectedCamera == "Orbit" else { return }
         if event.modifierFlags.contains(.shift) { pan(event); return }
         azimuth -= Float(event.deltaX) * 0.008
         elevation = min(.pi / 2 - 0.001, max(0.025, elevation + Float(event.deltaY) * 0.008))
@@ -214,16 +236,18 @@ struct RobotScene: NSViewRepresentable {
     override func rightMouseDragged(with event: NSEvent) { pan(event) }
     override func otherMouseDragged(with event: NSEvent) { pan(event) }
     private func pan(_ event: NSEvent) {
+        guard selectedCamera == "Orbit" else { return }
         let right = cameraEntity.orientation.act(SIMD3<Float>(1, 0, 0))
         let up = cameraEntity.orientation.act(SIMD3<Float>(0, 1, 0))
         target += (-right * Float(event.deltaX) + up * Float(event.deltaY)) * distance * 0.001
         updateCamera()
     }
     override func scrollWheel(with event: NSEvent) {
+        guard selectedCamera == "Orbit" else { return }
         distance = min(4, max(0.25, distance * exp(Float(event.scrollingDeltaY) * 0.008)))
         updateCamera()
     }
-    override func magnify(with event: NSEvent) { distance = min(4, max(0.25, distance * Float(1 - event.magnification))); updateCamera() }
+    override func magnify(with event: NSEvent) { guard selectedCamera == "Orbit" else { return }; distance = min(4, max(0.25, distance * Float(1 - event.magnification))); updateCamera() }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
             if owner?.experiment.placingCube == true { owner?.experiment.cancelFloorPlacement() }

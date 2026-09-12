@@ -15,7 +15,7 @@ import RobotControl
         self.model = model
         let arguments = ProcessInfo.processInfo.arguments
         guard !arguments.contains("--smoke-test"), !arguments.contains("--performance-check") else { return }
-        if arguments.contains("--mcp-integration-test") || UserDefaults.standard.object(forKey: "mcpControlEnabled") == nil || UserDefaults.standard.bool(forKey: "mcpControlEnabled") { setEnabled(true, persist: false) }
+        if arguments.contains("--mcp-integration-test") || arguments.contains("--external-controller") || UserDefaults.standard.object(forKey: "mcpControlEnabled") == nil || UserDefaults.standard.bool(forKey: "mcpControlEnabled") { setEnabled(true, persist: false) }
     }
     func setEnabled(_ value: Bool, persist: Bool = true) {
         if persist { UserDefaults.standard.set(value, forKey: "mcpControlEnabled") }
@@ -174,6 +174,9 @@ import RobotControl
         return [
             "app_version": ControlCatalog.version, "instance_id": instanceID, "process_id": ProcessInfo.processInfo.processIdentifier,
             "simulation": "kinematic", "hardware_connected": false, "scene_ready": model.sceneReady,
+            "window": ["accepts_mouse_events": !(model.viewport?.window?.ignoresMouseEvents ?? true), "visible": model.viewport?.window?.isVisible ?? false, "key": model.viewport?.window?.isKeyWindow ?? false],
+            "fly_brain": model.experiment.flyBrain.diagnosticState,
+            "brain_activity": model.experiment.brainActivity.diagnosticState,
             "mcp_enabled": enabled, "command_revision": revision,
             "joints_deg": model.current.joints, "gripper_mm": model.current.grip,
             "tcp_mm": ["x": tcp.x, "y": tcp.y, "z": tcp.z],

@@ -7,6 +7,13 @@ import simd
 
 /// Native rigid-body backend. Robot links are kinematic; the cube is always dynamic.
 @MainActor final class ManipulationScene {
+    // Convex resources are immutable and independent of episode poses/materials.
+    // Reuse them when rebuilding a fresh contact world after exploratory trials.
+    private struct LinkGeometry {
+        let shapes: [ShapeResource]
+        let innerPadY: Float?
+    }
+    private static var geometryCache: [String: LinkGeometry] = [:]
     let root = Entity()
     private(set) var cube = ModelEntity()
     private var colliders: [String: ModelEntity] = [:]
@@ -17,6 +24,8 @@ import simd
     private let robot: Kinematics
     private var task: ExperimentTask
     private var previousPose: Pose?
+    private var gripStop=GripperContactStop()
+    private var padInnerY: [String: Float] = [:]
     private var pendingPose: Pose?
     private var physicsSeconds=0.0
     private(set) var physicsSteps=0
@@ -42,15 +51,35 @@ import simd
         floor.physicsBody=PhysicsBodyComponent(shapes:[floorShape],mass:1,material:material,mode:.static)
         root.addChild(floor)
         for link in robot.definition.links {
+            try Task.checkCancellation()
             var shapes=[ShapeResource]()
-            for visual in link.visuals {
-                try Task.checkCancellation()
-                let mesh=try STLMesh(data:Data(contentsOf:Assets.url("model/"+visual.mesh)))
-                let transform=floatMatrix(originTransform(xyz:visual.xyz,rpy:visual.rpy))
-                let points=mesh.indexed().positions.map { p -> SIMD3<Float> in
-                    let v=transform * SIMD4(p,1); return SIMD3(v.x,v.y,v.z)
+            let geometryKey=link.name+"|"+link.visuals.map {
+                Assets.url("model/"+$0.mesh).path+"|"+String(describing:$0.xyz)+"|"+String(describing:$0.rpy)
+            }.joined(separator:";")
+            if let cached=Self.geometryCache[geometryKey] {
+                shapes=cached.shapes;padInnerY[link.name]=cached.innerPadY
+            } else {
+                for visual in link.visuals {
+                    try Task.checkCancellation()
+                    let mesh=try STLMesh(data:Data(contentsOf:Assets.url("model/"+visual.mesh)))
+                    let transform=floatMatrix(originTransform(xyz:visual.xyz,rpy:visual.rpy))
+                    let points=mesh.indexed().positions.map { p -> SIMD3<Float> in
+                        let v=transform * SIMD4(p,1); return SIMD3(v.x,v.y,v.z)
+                    }
+                    if visual.mesh.contains("finger_black"), link.name == "finger_left_link" || link.name == "finger_right_link" {
+                        padInnerY[link.name] = link.name == "finger_left_link" ? points.map(\.y).min() : points.map(\.y).max()
+                    }
+                    if visual.mesh.contains("finger_black") {
+                        let triangles = mesh.positions.map { p -> SIMD3<Float> in
+                            let v = transform * SIMD4(p,1); return SIMD3(v.x,v.y,v.z)
+                        }
+                        let sections = CollisionSections.alongX(triangles:triangles,cuts:[-0.07,-0.05,-0.03,-0.02,-0.015,-0.01,-0.005,0.001])
+                        for section in sections { shapes.append(try await ShapeResource.generateConvex(from:section)) }
+                    } else {
+                        shapes.append(try await ShapeResource.generateConvex(from:points))
+                    }
                 }
-                shapes.append(try await ShapeResource.generateConvex(from:points))
+                Self.geometryCache[geometryKey]=LinkGeometry(shapes:shapes,innerPadY:padInnerY[link.name])
             }
             let body=ModelEntity(); body.name=link.name
             body.collision=CollisionComponent(shapes:shapes,filter:CollisionFilter(group:.init(rawValue:4),mask:.init(rawValue:2)))
@@ -92,7 +121,7 @@ import simd
         onFloor=contacts.contains("floor")
     }
     func reset(task: ExperimentTask, pose: Pose) {
-        self.task=task; setPaused(true)
+        self.task=task; setPaused(true); gripStop.reset()
         cube.removeFromParent(); contacts=[]; impulses=[:]; onFloor=true
         let size=Float(task.cubeSizeMM/1000), shape=ShapeResource.generateBox(size:.init(repeating:size))
         cube=ModelEntity(mesh:.generateBox(size:size),materials:[SimpleMaterial(color:.systemOrange,roughness:0.8,isMetallic:false)])
@@ -111,7 +140,8 @@ import simd
         physicsSeconds=0; physicsSteps=0
         previousCubeTransform=doubleMatrix(cube.transform.matrix)
         measuredLinearMMPerSecond=0; measuredAngularDegPerSecond=0
-        if let clock { CMTimebaseSetTime(clock,time:.zero) }
+        // Keep the RealityKit timebase monotonic across resets. The per-episode
+        // physicsSeconds counter above supplies zero-based observation timestamps.
     }
     func setPaused(_ paused: Bool) { if let clock { CMTimebaseSetRate(clock,rate:paused ? 0 : 1) } }
     /// Conservative per-part collision bounds reject occupied floor locations before mutation.
@@ -168,18 +198,29 @@ import simd
                                                         angularVelocity:simd_length(angle)<0.000001 ? .zero : SIMD3<Float>(angle/dt))
         }
     }
-    /// Geometric contact stop with a small solver preload; never attaches the cube.
-    func limitGrip(_ requested: Pose) -> Pose {
+    /// Slow closure near the object; stop on actual bilateral finger contact.
+    func limitGrip(_ requested: Pose, continuous: Bool = false) -> Pose {
         let tool=robot.toolTransform(requested.joints), inv=tool.inverse
         let center=inv * SIMD4<Double>(SIMD3<Double>(cube.position),1)
-        guard center.x > -0.065, center.x < 0.01, abs(center.z) < task.cubeSizeMM/2000+0.008 else { return requested }
+        guard center.x > -0.065, center.x < 0.01, abs(center.z) < task.cubeSizeMM/2000+0.008 else { gripStop.reset(); return requested }
         let relative=inv * doubleMatrix(cube.transform.matrix)
         let half=task.cubeSizeMM/2000
         let extent=half*(abs(relative[0].y)+abs(relative[1].y)+abs(relative[2].y))
-        guard abs(center.y) < extent+requested.grip/2000+0.005 else { return requested }
+        guard abs(center.y) < extent+requested.grip/2000+0.005 else { gripStop.reset(); return requested }
         var accepted=requested
         // A closing command can stop at contact, but never commands an unsolicited opening.
-        accepted.grip=max(requested.grip,min(previousPose?.grip ?? 90,(extent+abs(center.y))*2000-0.1))
+        let surfaceOffsetMM = Double((padInnerY["finger_right_link"] ?? 0) - (padInnerY["finger_left_link"] ?? 0)) * 1000
+        let current=previousPose?.grip ?? maximumGripperOpeningMM
+        let bilateral=contacts.contains("finger_left_link") && contacts.contains("finger_right_link")
+        let estimatedWidth=extent*2000+surfaceOffsetMM
+        if continuous {
+            accepted.grip=gripStop.aperture(current:current,requested:requested.grip,
+                estimatedWidth:estimatedWidth,bilateralContact:bilateral)
+        } else {
+            // Manual setters remain immediate, with the existing geometric contact stop.
+            gripStop.reset()
+            accepted.grip=max(requested.grip,min(current,estimatedWidth-0.02))
+        }
         return accepted
     }
     var cubePose: CartesianPose { CartesianPose(doubleMatrix(cube.transform.matrix)) }

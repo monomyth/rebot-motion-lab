@@ -59,9 +59,21 @@ public struct FloorConstraint: Sendable {
         // certifies intervals instead of merely testing samples that could tunnel through.
         let angle = zip(from.joints, to.joints).reduce(0) { $0 + abs($1.1 - $1.0) * degreesToRadians }
         let curvature = radiusBound * angle * angle + 2 * angle * abs(to.grip - from.grip) / 2000
+        let startClearance = minimumHeight(from) - Self.height
+        guard startClearance >= 0 else { return from }
+        // At contact, certify an ascending segment against the actual floor. A
+        // fixed positive margin would reject its starting point forever.
+        let clearance = min(Self.margin, startClearance)
         var evaluations = 0
         func walk(_ a: Double, _ b: Double, _ ha: Double, _ hb: Double, _ depth: Int) -> Double {
-            if min(ha, hb) >= Self.margin, min(ha, hb) >= curvature * (b - a) * (b - a) / 8 { return b }
+            // The vertex lies above its endpoint chord minus K*t*(1-t)/2.
+            // Minimize that quadratic instead of subtracting a constant bound:
+            // a segment that starts on the floor can still be proven to rise.
+            let quadratic = curvature * (b - a) * (b - a) / 2
+            let linear = hb - ha - quadratic
+            let t = quadratic > 0 ? clamp(-linear / (2 * quadratic), 0, 1) : 0
+            let lowerBound = quadratic > 0 ? ha + linear * t + quadratic * t * t : min(ha, hb)
+            if lowerBound >= clearance { return b }
             // Fail closed if unusually complex motion exhausts the bounded search.
             if depth == 24 || evaluations >= 4096 { return a }
             let m = (a + b) / 2
@@ -71,8 +83,17 @@ public struct FloorConstraint: Sendable {
             if first < m { return first }
             return walk(m, b, hm, hb, depth + 1)
         }
-        let fraction = walk(0, 1, minimumHeight(from) - Self.height, minimumHeight(to) - Self.height, 0)
+        let fraction = walk(0, 1, startClearance, minimumHeight(to) - Self.height, 0)
         return fraction == 1 ? to : blend(from, to, fraction)
+    }
+    /// External joint and jaw drives are independent actuators. After a joint
+    /// reaches the plane, permit the remaining jaw travel if its sweep is clear.
+    public func limitedWithIndependentGrip(from: Pose, to: Pose) -> Pose {
+        let stopped = limited(from: from, to: to)
+        guard stopped.grip != to.grip else { return stopped }
+        var jawTarget = stopped
+        jawTarget.grip = to.grip
+        return limited(from: stopped, to: jawTarget)
     }
     private func limitJoint(from: Pose, to: Pose, index: Int) -> Pose {
         let transforms = robot.transforms(from.joints, grip: from.grip)

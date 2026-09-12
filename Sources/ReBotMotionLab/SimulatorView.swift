@@ -40,15 +40,20 @@ struct SimulatorView: View {
     }
     private var viewport: some View {
         ZStack(alignment: .topLeading) {
-            RobotScene(model: model, showGrid: model.showGrid, showAxes: model.showAxes, showTrace: model.showTrace, camera: model.camera, cameraRevision: model.cameraRevision, traceRevision: model.traceRevision)
-                .accessibilityLabel("Interactive 3D B601-DM robot")
-                .accessibilityHint("Drag to orbit, shift-drag to pan, and scroll or pinch to zoom.")
+            GeometryReader { geometry in
+                let size=ObservationRig.viewportSize(model.camera,width:Double(geometry.size.width),height:Double(geometry.size.height))
+                RobotScene(model: model, showGrid: model.showGrid, showAxes: model.showAxes, showTrace: model.showTrace, camera: model.camera, cameraRevision: model.cameraRevision, traceRevision: model.traceRevision)
+                    .frame(width:CGFloat(size.x),height:CGFloat(size.y))
+                    .position(x:geometry.size.width/2,y:geometry.size.height/2)
+                    .accessibilityLabel("Interactive 3D B601-DM robot")
+                    .accessibilityHint("Orbit supports drag, pan, and zoom. Front and Gripper preserve their camera field of view.")
+            }.background(Color.labPanel)
             if let image = model.captureImage { Image(nsImage: image).resizable().allowsHitTesting(false) }
             VStack {
                 HStack {
                     Picker("Camera", selection: Binding(get: { model.camera }, set: { model.resetCamera($0) })) {
-                        Text("Orbit").tag("Orbit"); Text("Front").tag("Front"); Text("Top").tag("Top")
-                    }.pickerStyle(.segmented).frame(width: 210 * fontScale)
+                        ForEach(ObservationRig.viewNames,id:\.self) { Text($0).tag($0) }
+                    }.pickerStyle(.segmented).frame(width: 285 * fontScale)
                     Spacer()
                     Button { model.resetCamera(model.camera) } label: { Image(systemName: "viewfinder") }.help("Reset camera")
                 }
@@ -70,8 +75,18 @@ struct SimulatorView: View {
                 ContentUnavailableView("3D model unavailable", systemImage: "exclamationmark.triangle", description: Text(error))
             }
         }
+        .overlay(alignment: .topTrailing) {
+            BrainActivityOverlay(store: model.experiment.brainActivity)
+                .padding(.top, 55).padding(.trailing, 16)
+        }
         .overlay(alignment: .top) {
-            CubePlacementHint(coordinator:model.experiment).padding(.top,55).allowsHitTesting(false)
+            VStack(spacing:3) {
+                if ObservationRig.observationNames.contains(model.camera) {
+                    Text(model.camera == "Front" ? "Gemini 336L · RGB · 94° × 68°" : "Gemini 305 · RGB · 94° × 68°")
+                        .labFont(.system(size:10)).foregroundStyle(.secondary)
+                }
+                CubePlacementHint(coordinator:model.experiment)
+            }.padding(.top,55).allowsHitTesting(false)
         }
     }
     private var targetControls: some View {

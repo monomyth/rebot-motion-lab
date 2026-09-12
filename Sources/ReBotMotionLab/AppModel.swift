@@ -239,9 +239,14 @@ typealias PlaybackState = MotionPlayer.State
         do {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size < 2_000_000 else { throw TrajectoryError.invalid }
-            let file = try JSONDecoder().decode(TrajectoryFile.self, from: Data(contentsOf: url))
-            let poses = try file.validated(using: robot)
-            stop(); waypoints = poses; speed = file.speed_percent; status = "Imported \(poses.count) waypoints"
+            switch try SimulatorDocument.decode(Data(contentsOf:url)) {
+            case .task(let task):
+                try experiment.configure(task)
+                page = .simulator
+            case .trajectory(let file):
+                let poses = try file.validated(using: robot)
+                stop(); waypoints = poses; speed = file.speed_percent; status = "Imported \(poses.count) waypoints"
+            }
         } catch { self.error = error.localizedDescription }
     }
     func saveReference() {

@@ -1,0 +1,84 @@
+{
+  "source_assembly": "/Users/monomyth/github/rebot-b601-trinkets/output/cradle_support/B601_Gemini305_CradleSupportPreview.FCStd",
+  "source_image": "/Users/monomyth/github/rebot-b601-trinkets/output/cradle_support/assembly_side.png",
+  "reference_tilt_deg": 15.0,
+  "cad_axes_to_tool": {
+    "cad_Z": "tool_X",
+    "cad_X": "tool_Y",
+    "cad_Y": "tool_Z"
+  },
+  "cad_to_tool_rotation": [
+    [
+      0.0,
+      0.0,
+      1.0
+    ],
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0
+    ]
+  ],
+  "translation_mm": [
+    -103.2093276977539,
+    0.0,
+    0.0
+  ],
+  "source_files": {
+    "B601_Gemini305_CradleSupportPreview.FCStd": "87bc7fd56cf6ced34b83eb9298d856099eb3138b28757faa536c843d853e63d5",
+    "assembly_side.png": "75dfb0c79f77998217ab52c1d6c3571b3a7255c665c086c405a0dfbe5167b5b2",
+    "README.md": "091e8bcf14cf5793dab4cd580b4441c69525f20d28cbcfeb8073d70f930c765f"
+  },
+  "exports": {
+    "gemini305-cradle.stl": {
+      "sha256": "cbb7256a9b235e42966fa94d00a63dad50c54452d1bf5334a846009633f21b9f",
+      "facets": 1532,
+      "minimum_m": [
+        -0.10820932686328888,
+        -0.021900000050663948,
+        0.022737635299563408
+      ],
+      "maximum_m": [
+        -0.07867748290300369,
+        0.021900000050663948,
+        0.08818905055522919
+      ]
+    },
+    "gemini305-housing.stl": {
+      "sha256": "b26128d3fb953387d9c93999a74bc888ef1e9e0c6a5b1f7a395f86162ff96100",
+      "facets": 175252,
+      "minimum_m": [
+        -0.09306441247463226,
+        -0.021001622080802917,
+        0.04031917825341225
+      ],
+      "maximum_m": [
+        -0.060992371290922165,
+        0.021000221371650696,
+        0.08567622303962708
+      ]
+    }
+  },
+  "registration": {
+    "samples": 5877,
+    "nearest_vertex_median_mm": 0.04928388359911685,
+    "fraction_within_0_1_mm": 0.7621235324144972,
+    "method": "axes and fingertip datum, checked against existing gripper-base vertices; tessellation/source parts differ"
+  },
+  "camera_rear_midpoint_tool_mm": [
+    -88.2093276977539,
+    0.0,
+    66.0
+  ],
+  "nominal_front_midpoint_tool_mm": [
+    -65.99303369310533,
+    0.0,
+    60.04716196264202
+  ],
+  "optical_assumption": "Ideal RGB pinhole at nominal 23 mm front plane; measured factory intrinsics/entrance pupil unavailable"
+}

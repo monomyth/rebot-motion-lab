@@ -2,7 +2,7 @@ import Foundation
 import CoreFoundation
 
 public enum ControlCatalog {
-    public static let version = "1.7-fly-codex"
+    public static let version = "1.8-fly-codex"
     public static var experimentToolNames: Set<String> { Set(experimentTools.compactMap { $0["name"] as? String }) }
     private static func number(_ description: String, min: Double? = nil, max: Double? = nil) -> [String: Any] {
         var s: [String: Any] = ["type": "number", "description": description]
@@ -25,7 +25,7 @@ public enum ControlCatalog {
         tool("rebot_add_waypoint", "Append the current stopped pose to the sequence.", ["name": ["type": "string", "minLength": 1, "maxLength": 120]]),
         tool("rebot_set_sequence", "Replace the simulator sequence after validating every pose. Does not start playback. Export from the app to save permanently.", ["poses": ["type": "array", "minItems": 1, "maxItems": 1000, "items": ["type": "object", "properties": ["name": ["type": "string", "minLength": 1, "maxLength": 120], "joints_deg": ["type": "array", "items": ["type": "number"], "minItems": 6, "maxItems": 6], "gripper_mm": number("Opening in mm.", min: 0, max: 90)], "required": ["name", "joints_deg", "gripper_mm"], "additionalProperties": false]]], required: ["poses"], destructive: true),
         tool("rebot_clear_sequence", "Clear all simulator waypoints. Does not change the pose. Stop playback first.", destructive: true),
-        tool("rebot_set_view", "Show the simulator and set its camera or overlays. Omitted settings stay unchanged.", ["camera": ["type": "string", "enum": ["Orbit", "Front", "Top"]], "grid": ["type": "boolean"], "tool_axes": ["type": "boolean"], "trace": ["type": "boolean"], "clear_trace": ["type": "boolean"]])
+        tool("rebot_set_view", "Show the simulator and set its camera or overlays. Omitted settings stay unchanged.", ["camera": ["type": "string", "enum": ["Orbit", "Front", "Top", "Gripper"]], "grid": ["type": "boolean"], "tool_axes": ["type": "boolean"], "trace": ["type": "boolean"], "clear_trace": ["type": "boolean"]])
     ] + experimentTools
     public static let resources: [[String: Any]] = [
         ["uri": "rebot://state", "name": "Live simulator state", "mimeType": "application/json"],
