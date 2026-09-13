@@ -351,7 +351,7 @@ enum ControlMode: String {
         guard !flyBrainRunning else { return }
         if !mcpControl.enabled { mcpControl.setEnabled(true) }
         guard let launch = FlyBrainLaunch.paths() else {
-            error = "Fly brain controller not found. Expected /Users/monomyth/code/grok/fly-brain/controller/.venv."
+            error = "Fly brain controller not found. Set FLYBRAIN_CONTROLLER to the controller directory (needs .venv)."
             flyBrainStatus = "Controller not found."
             return
         }
