@@ -1,6 +1,6 @@
 {
-  "source_assembly": "/Users/monomyth/github/rebot-b601-trinkets/output/cradle_support/B601_Gemini305_CradleSupportPreview.FCStd",
-  "source_image": "/Users/monomyth/github/rebot-b601-trinkets/output/cradle_support/assembly_side.png",
+  "source_assembly": "B601_Gemini305_CradleSupportPreview.FCStd",
+  "source_image": "assembly_side.png",
   "reference_tilt_deg": 15.0,
   "cad_axes_to_tool": {
     "cad_Z": "tool_X",
